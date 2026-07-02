@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=68.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "synaptics-tactile-newton"
+version = "0.1.0"
+description = "Synaptics CTS tactile sensor model for Newton physics engine"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "warp-lang",
+    "numpy",
+]
+
+[project.optional-dependencies]
+viewer = ["rerun-sdk"]
+test = ["pytest>=7.0"]
+# Optional Isaac Lab wrapper (synaptics_tactile_newton.isaaclab). Requires Isaac
+# Lab 3.0+, the first release with the Newton backend. Never pulled by the core
+# install.
+#
+# NOTE: Isaac Lab 3.0+ is NOT on PyPI yet, so `pip install
+# synaptics-tactile-newton[isaaclab]` cannot resolve this pin from an index
+# today. Install Isaac Lab from a local source checkout instead, e.g.
+# `./setup_newton.sh --with-isaaclab /path/to/IsaacLab`. This pin is a
+# placeholder for when 3.0 ships on PyPI.
+isaaclab = ["isaaclab>=3.0"]
+
+[tool.setuptools.packages.find]
+include = ["synaptics_tactile_newton*"]
+
+[tool.setuptools.package-data]
+"synaptics_tactile_newton" = ["assets/*.usd", "assets/*.usda", "assets/*.json"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = ["-v"]
+markers = [
+    "sim: slow Newton simulation test (needs newton + the CTS sensor USD)",
+]
