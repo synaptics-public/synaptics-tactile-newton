@@ -36,10 +36,8 @@ The force areas point +Y in the USD's local frame and import as STATIC colliders
 +Z), and that same rotation is passed as ``mount_rotation`` to bake the static
 press axes into world frame.
 
-Usage:
-    .venv-newton/bin/python examples/standalone_newton.py
-    .venv-newton/bin/python examples/standalone_newton.py --steps 400 --no-viewer
-    .venv-newton/bin/python examples/standalone_newton.py --mass 0.05
+Pass ``--help`` for the flag list and copy-pasteable example commands (the
+script prints its own path, so the examples run as-is).
 """
 
 import argparse
@@ -74,9 +72,33 @@ CAMERA_POS = (0.039113, -0.074668, 0.039714)
 CAMERA_TARGET = (0.0, 0.0, 0.011259)
 CAMERA_UP = (0.018591, 0.120664, 0.992519)
 
+# Slower interactive navigation for the Newton GL viewer: its defaults (4.0 m/s
+# fly, 0.15 scroll zoom) move far too fast at this cm-scale scene.
+VIEWER_MOVE_SPEED = 0.1          # WASD fly speed [m/s] (ViewerGL default 4.0)
+VIEWER_ZOOM_SENSITIVITY = 0.015  # scroll-wheel zoom (ViewerGL default 0.15)
+
+# Path of THIS script relative to the current directory, so the example commands
+# stay correct even if the file is renamed, without the noise of a long abs path.
+_SCRIPT = os.path.relpath(__file__)
+_EXAMPLES = f"""\
+examples:
+  # default: Rerun web viewer, cube drop, prints per-taxel + total force
+  .venv-newton/bin/python {_SCRIPT}
+
+  # headless: no viewer, run 400 steps
+  .venv-newton/bin/python {_SCRIPT} --steps 400 --no-viewer
+
+  # native OpenGL viewer window (needs a display)
+  .venv-newton/bin/python {_SCRIPT} --gui
+"""
+
 
 def main():
-    parser = argparse.ArgumentParser(description="CTS tactile sensor drop test")
+    parser = argparse.ArgumentParser(
+        description="CTS tactile sensor drop test",
+        epilog=_EXAMPLES,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     parser.add_argument("--steps", type=int, default=400, help="Simulation frames")
     parser.add_argument("--dt", type=float, default=1.0 / 480.0, help="Frame dt")
     parser.add_argument("--substeps", type=int, default=4, help="Substeps per frame")
@@ -87,7 +109,7 @@ def main():
     parser.add_argument(
         "--drop-height", type=float, default=0.05, help="Cube start height [m]"
     )
-    parser.add_argument("--force-max", type=float, default=10.0, help="Taxel sat. [N]")
+    parser.add_argument("--force-max", type=float, default=100.0, help="Taxel sat. [N]")
     parser.add_argument(
         "--no-mujoco-contacts",
         dest="use_mujoco_contacts",
@@ -203,6 +225,15 @@ def main():
             # Place the eye and aim it at the sensor.
             viewer.camera.pos = _PyVec3(*CAMERA_POS)
             viewer.camera.look_at(CAMERA_TARGET)
+            # Slow the GL viewer's navigation: its defaults (4.0 m/s fly, 0.15
+            # scroll zoom) move far too fast at this cm-scale scene. These live
+            # on the viewer instance; guarded so a renamed attribute is a no-op.
+            if hasattr(viewer, "_cam_speed"):
+                viewer._cam_speed = VIEWER_MOVE_SPEED
+            if hasattr(viewer, "_camera_dolly_scroll_sensitivity"):
+                viewer._camera_dolly_scroll_sensitivity = VIEWER_ZOOM_SENSITIVITY
+            if hasattr(viewer, "_camera_dolly_drag_sensitivity"):
+                viewer._camera_dolly_drag_sensitivity = VIEWER_ZOOM_SENSITIVITY * 0.1
             print("Newton GL viewer window opened (close it or Ctrl+C to exit).")
         except Exception as exc:  # noqa: BLE001
             print(f"GL viewer unavailable ({exc}); running without viewer")
@@ -236,6 +267,10 @@ def main():
                 )
             )
             print("Rerun viewer at http://localhost:9090")
+            print(
+                "  (remote/SSH: forward ports 9090 AND 9876 \u2014 the page is on "
+                "9090, scene data streams over 9876)"
+            )
             if args.rrd:
                 print(f"Recording to: {os.path.abspath(args.rrd)}")
         except ImportError:

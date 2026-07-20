@@ -54,7 +54,7 @@ class CTSSensor:
             the kernel rotates it into world frame each step by the body pose.
             Default +Z. The sign must be baked into the taxel-map axis so
             compression projects positive; there is no runtime inversion flag.
-        force_max: Per-taxel saturation force [N]. Default 10.0.
+        force_max: Per-taxel saturation force [N]. Default 100.0.
         taxel_map: Optional taxel map (``<out>_taxel_map.json`` path or parsed
             dict). When given it OVERRIDES ``sensing_axis`` with the map's shared
             press axis and exposes per-taxel names/centroids (matched to shapes
@@ -65,6 +65,11 @@ class CTSSensor:
             reorienting rotation — pass that same rotation. Leave None for a
             sensor on a moving body (the kernel rotates the axis by the live
             pose instead).
+
+    Data model:
+        ``data`` is the only device-resident (GPU ``wp.array``) surface. Every
+        ``taxel_*`` property is static host metadata: resolved once at
+        construction and free to re-read (never re-copied from the device).
     """
 
     def __init__(
@@ -72,7 +77,7 @@ class CTSSensor:
         model,
         sensing_shape_pattern: str,
         sensing_axis=(0.0, 0.0, 1.0),
-        force_max: float = 10.0,
+        force_max: float = 100.0,
         taxel_map=None,
         mount_rotation=None,
     ):
@@ -88,7 +93,7 @@ class CTSSensor:
         self._taxel_names = None
         self._taxel_centroids = None
         if taxel_map is not None:
-            sensing_axis = self._resolve_axis_from_taxel_map(model, taxel_map)
+            sensing_axis = self._resolve_taxel_map(model, taxel_map)
 
         # Normalize the shared press axis.
         axis = np.asarray(sensing_axis, dtype=np.float32).reshape(-1)
@@ -102,9 +107,12 @@ class CTSSensor:
         # For a world-static sensor the kernel cannot rotate the axis (no body
         # pose to read), so bake the USD's reorienting rotation into it here.
         if mount_rotation is not None:
-            axis = self._rotate_vectors(
-                axis[None, :], np.asarray(mount_rotation, np.float32)
-            )[0]
+            q = np.asarray(mount_rotation, np.float32)
+            rotated = wp.quat_rotate(
+                wp.quat(float(q[0]), float(q[1]), float(q[2]), float(q[3])),
+                wp.vec3(float(axis[0]), float(axis[1]), float(axis[2])),
+            )
+            axis = np.array(rotated, dtype=np.float32)
         self._sensing_axis = wp.vec3(float(axis[0]), float(axis[1]), float(axis[2]))
 
         # Per-taxel body index (so the kernel can rotate the axis by the live
@@ -115,7 +123,10 @@ class CTSSensor:
         else:
             shape_body = model.shape_body.numpy()
             taxel_bodies = shape_body[sensing_idx].astype(np.int32)
-        self._taxel_bodies = wp.array(taxel_bodies, dtype=wp.int32, device=device)
+        # Same per-taxel body index on both sides of the device boundary:
+        # ``_wp`` feeds the kernels (GPU), ``_np`` backs the host property.
+        self._taxel_bodies_wp = wp.array(taxel_bodies, dtype=wp.int32, device=device)
+        self._taxel_bodies_np = taxel_bodies
 
         # Taxel-to-shape index mapping (identity for now — one taxel per shape)
         self._taxel_indices = wp.array(
@@ -130,7 +141,6 @@ class CTSSensor:
         else:
             shape_tf = model.shape_transform.numpy()
             local_pos = shape_tf[sensing_idx, :3].astype(np.float32)
-        self._taxel_local_pos_np = local_pos
         self._taxel_local_pos = wp.array(local_pos, dtype=wp.vec3, device=device)
 
         # Output tensors (GPU)
@@ -145,45 +155,6 @@ class CTSSensor:
             f"axis={tuple(float(v) for v in axis)}, "
             f"force_max={force_max} N"
         )
-
-    @staticmethod
-    def _rotate_vectors(vecs, quat):
-        """Rotate (N, 3) vectors by a single quaternion (x, y, z, w)."""
-        q = quat.astype(np.float32)
-        qxyz = q[:3]
-        w = q[3]
-        # v' = v + 2*cross(qxyz, cross(qxyz, v) + w*v)
-        t = np.cross(qxyz, vecs) + w * vecs
-        return (vecs + 2.0 * np.cross(qxyz, t)).astype(np.float32)
-
-    @staticmethod
-    def _rotate_vectors_batched(vecs, quats):
-        """Rotate each (N, 3) vector by its own (N, 4) quaternion (x, y, z, w)."""
-        vecs = vecs.astype(np.float32)
-        qxyz = quats[:, :3].astype(np.float32)
-        w = quats[:, 3:4].astype(np.float32)
-        # v' = v + 2*cross(qxyz, cross(qxyz, v) + w*v)
-        t = np.cross(qxyz, vecs) + w * vecs
-        return (vecs + 2.0 * np.cross(qxyz, t)).astype(np.float32)
-
-    def taxel_positions_world(self, state):
-        """Per-taxel positions in world frame, shape (num_taxels, 3).
-
-        CPU mirror of the ``_taxel_world_positions`` kernel (for the debug-vis
-        markers): each taxel's body-local position transformed by its body's
-        live pose, with world-static taxels (body < 0) passed through unchanged.
-        """
-        bodies = self._taxel_bodies.numpy()
-        body_q = state.body_q.numpy()  # (num_bodies, 7): px,py,pz, qx,qy,qz,qw
-        positions = self._taxel_local_pos_np.copy()
-        moving = bodies >= 0
-        if np.any(moving):
-            b = bodies[moving]
-            rotated = self._rotate_vectors_batched(
-                self._taxel_local_pos_np[moving], body_q[b, 3:7]
-            )
-            positions[moving] = body_q[b, 0:3].astype(np.float32) + rotated
-        return positions
 
     @staticmethod
     def _load_taxel_map(taxel_map):
@@ -212,7 +183,7 @@ class CTSSensor:
             )
         return taxel_map
 
-    def _resolve_axis_from_taxel_map(self, model, taxel_map):
+    def _resolve_taxel_map(self, model, taxel_map):
         """Read the shared press axis and cache per-taxel names/centroids.
 
         Names and centroids are matched to the sensing shapes BY NAME so they
@@ -253,6 +224,11 @@ class CTSSensor:
         return self._num_taxels
 
     @property
+    def taxel_bodies(self):
+        """Per-taxel body index (host ``int32``); ``-1`` for static/world shapes."""
+        return self._taxel_bodies_np
+
+    @property
     def taxel_names(self):
         """Per-taxel force-area names in sensing/output row order (or None)."""
         return self._taxel_names
@@ -284,7 +260,7 @@ class CTSSensor:
             inputs=[
                 self._sensor_contact.total_force,
                 self._taxel_indices,
-                self._taxel_bodies,
+                self._taxel_bodies_wp,
                 self._sensing_axis,
                 state.body_q,
                 self._force_max,
@@ -298,7 +274,7 @@ class CTSSensor:
             dim=self._num_taxels,
             inputs=[
                 self._taxel_local_pos,
-                self._taxel_bodies,
+                self._taxel_bodies_wp,
                 state.body_q,
                 self._data.positions_w,
             ],
@@ -323,7 +299,7 @@ class CTSSensor:
             dim=self._num_taxels,
             inputs=[
                 self._data.force,
-                self._taxel_bodies,
+                self._taxel_bodies_wp,
                 self._sensing_axis,
                 state.body_q,
                 int(taxels_per_group),

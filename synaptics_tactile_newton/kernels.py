@@ -130,3 +130,57 @@ def _reduce_total_force(
     wp.atomic_add(out_total_flat, base + 0, f * axis[0])
     wp.atomic_add(out_total_flat, base + 1, f * axis[1])
     wp.atomic_add(out_total_flat, base + 2, f * axis[2])
+
+
+@wp.kernel
+def _scatter_env_force(
+    src: wp.array(dtype=wp.float32),
+    env_mask: wp.array(dtype=wp.bool),
+    taxels_per_env: wp.int32,
+    dst: wp.array2d(dtype=wp.float32),
+):
+    """Copy per-taxel force from the flat core array into each env's row.
+
+    For env ``e``, the taxels live at ``src[e*taxels_per_env : (e+1)*taxels_per_env]``
+    and are written to ``dst[e]``. Only envs whose ``env_mask[e]`` is True are
+    touched; the rest keep their previous values. Runs on-device so the batching
+    step needs no host round-trip.
+
+    Args:
+        src: Flat per-taxel force [N], env-major, shape (num_envs * taxels_per_env,).
+        env_mask: Per-env update flags, shape (num_envs,); False leaves the row.
+        taxels_per_env: Contiguous taxels per env.
+        dst: Batched output, shape (num_envs, taxels_per_env).
+    """
+    env, t = wp.tid()
+    if env_mask[env]:
+        dst[env, t] = src[env * taxels_per_env + t]
+
+
+@wp.kernel
+def _scatter_env_positions(
+    src: wp.array(dtype=wp.vec3),
+    env_mask: wp.array(dtype=wp.bool),
+    taxels_per_env: wp.int32,
+    dst: wp.array3d(dtype=wp.float32),
+):
+    """Same copy as :func:`_scatter_env_force`, but for world-frame taxel positions.
+
+    ``src`` holds one ``vec3`` per taxel; each component is written into the
+    trailing axis of ``dst[e]`` (shape ``(taxels_per_env, 3)``). Masking and
+    env-major layout are identical to :func:`_scatter_env_force` — see there for
+    the layout sketch.
+
+    Args:
+        src: Flat per-taxel world positions [m], env-major, shape
+            (num_envs * taxels_per_env,).
+        env_mask: Per-env update flags, shape (num_envs,); False leaves the row.
+        taxels_per_env: Contiguous taxels per env.
+        dst: Batched output, shape (num_envs, taxels_per_env, 3).
+    """
+    env, t = wp.tid()
+    if env_mask[env]:
+        p = src[env * taxels_per_env + t]
+        dst[env, t, 0] = p[0]
+        dst[env, t, 1] = p[1]
+        dst[env, t, 2] = p[2]

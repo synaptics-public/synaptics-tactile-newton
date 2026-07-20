@@ -34,36 +34,10 @@ can build one bound to the Isaac Lab scene's Newton model.
 
 from __future__ import annotations
 
-import isaaclab.sim as sim_utils
-from isaaclab.markers import VisualizationMarkersCfg
 from isaaclab.sensors import SensorBaseCfg
 from isaaclab.utils.configclass import configclass
 
 from .sensor import CTSSensorIsaacLab
-
-
-def _taxel_marker(color: tuple[float, float, float]) -> sim_utils.SphereCfg:
-    return sim_utils.SphereCfg(
-        radius=0.0005,
-        visual_material=sim_utils.PreviewSurfaceCfg(diffuse_color=color),
-    )
-
-
-CTS_SENSOR_MARKER_CFG = VisualizationMarkersCfg(
-    prim_path="/Visuals/CTSSensor",
-    markers={
-        # Force ramp: cold (unloaded) -> hot (saturated). ``_debug_vis_callback``
-        # selects a prototype per taxel by its force fraction, so more colors ==
-        # a finer readout. Order matters (index 0 == lowest force).
-        "force_0": _taxel_marker((0.0, 0.0, 1.0)),  # blue
-        "force_1": _taxel_marker((0.0, 1.0, 1.0)),  # cyan
-        "force_2": _taxel_marker((0.0, 1.0, 0.0)),  # green
-        "force_3": _taxel_marker((1.0, 1.0, 0.0)),  # yellow
-        "force_4": _taxel_marker((1.0, 0.5, 0.0)),  # orange
-        "force_5": _taxel_marker((1.0, 0.0, 0.0)),  # red
-    },
-)
-"""Default per-taxel debug markers: a blue->red force ramp of spheres."""
 
 
 @configclass
@@ -86,7 +60,7 @@ class CTSSensorCfg(SensorBaseCfg):
     """Path to the geometry splitter's ``<out>_taxel_map.json`` (press axis +
     per-taxel names/centroids). When set it OVERRIDES ``sensing_axis``."""
 
-    force_max: float = 10.0
+    force_max: float = 100.0
     """Per-taxel saturation force [N]."""
 
     sensing_axis: tuple[float, float, float] = (0.0, 0.0, 1.0)
@@ -96,8 +70,3 @@ class CTSSensorCfg(SensorBaseCfg):
     """Optional (x, y, z, w) quaternion baked into the press axis at build time,
     for sensors statically fixed to the world. Leave ``None`` for a sensor on a
     moving body."""
-
-    visualizer_cfg: VisualizationMarkersCfg = CTS_SENSOR_MARKER_CFG
-    """Markers drawn per taxel when ``debug_vis`` is enabled: each taxel placed
-    at its world position, colored by force fraction along the marker ramp.
-    Requires a ``taxel_map`` (which supplies the positions)."""

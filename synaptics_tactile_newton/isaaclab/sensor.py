@@ -45,11 +45,11 @@ from typing import TYPE_CHECKING
 
 import numpy as np
 import warp as wp
-from isaaclab.markers import VisualizationMarkers
 from isaaclab.sensors import SensorBase
 
 from ..output import CTSOutput
 from ..sensor import CTSSensor
+from ..kernels import _scatter_env_force, _scatter_env_positions
 
 if TYPE_CHECKING:
     from .sensor_cfg import CTSSensorCfg
@@ -61,9 +61,6 @@ class CTSSensorIsaacLab(SensorBase):
     cfg: "CTSSensorCfg"
 
     def __init__(self, cfg: "CTSSensorCfg"):
-        # The visualizer must exist before SensorBase.__init__, which calls
-        # set_debug_vis() while wiring up debug vis.
-        self._tactile_visualizer: VisualizationMarkers | None = None
         super().__init__(cfg)
         # Heavy construction is deferred to _initialize_impl (the SensorBase
         # contract): at __init__ time the sim/model do not yet exist.
@@ -111,6 +108,28 @@ class CTSSensorIsaacLab(SensorBase):
                 f"'*_visual' twins)."
             )
         self._taxels_per_env = core_taxels // n_env
+
+        # This wrapper batches ONE physical sensor across the environments, so
+        # the pattern must resolve to a single sensing body per env (the sensor
+        # reads real per-body contact forces, and one env's taxels become one
+        # output row). Reshaping the matched bodies into (num_envs, taxels_per_env)
+        # and requiring each row to be a single body — with exactly one distinct
+        # body per env — makes that a checked fact. It turns the otherwise-silent
+        # case of a pattern spanning several bodies per env (e.g. two fingers
+        # matched at once, whose taxels would be concatenated into each env row)
+        # into a clear error: give each physical sensor its own config.
+        taxel_bodies = self._sensor.taxel_bodies.reshape(n_env, self._taxels_per_env)
+        single_body_per_env = bool(np.all(taxel_bodies == taxel_bodies[:, :1]))
+        distinct_bodies = int(np.unique(taxel_bodies[taxel_bodies >= 0]).size)
+        if not single_body_per_env or distinct_bodies not in (0, n_env):
+            raise RuntimeError(
+                f"Sensing pattern '{self.cfg.sensing_shape_pattern}' does not map "
+                f"to exactly one sensing body per environment (matched "
+                f"{distinct_bodies} sensing bodies across num_envs={n_env}). Each "
+                f"CTSSensorCfg must scope a single physical sensor; give every "
+                f"sensor its own config with a pattern that selects only its force "
+                f"areas (e.g. '*/LeftFinger/forceArea_*' vs '*/RightFinger/forceArea_*')."
+            )
         device = model.device
         self._data = CTSOutput(
             force=wp.zeros((n_env, self._taxels_per_env), dtype=wp.float32, device=device),
@@ -161,71 +180,44 @@ class CTSSensorIsaacLab(SensorBase):
         self._update_outdated_buffers()
         return self._data
 
-    # -- Debug visualization ---------------------------------------------- #
-
-    def _set_debug_vis_impl(self, debug_vis: bool) -> None:
-        """Create/show or hide the per-taxel markers (SensorBase debug-vis hook)."""
-        if debug_vis:
-            if self._tactile_visualizer is None:
-                self._tactile_visualizer = VisualizationMarkers(self.cfg.visualizer_cfg)
-            self._tactile_visualizer.set_visibility(True)
-        elif self._tactile_visualizer is not None:
-            self._tactile_visualizer.set_visibility(False)
-
-    def _debug_vis_callback(self, event) -> None:
-        """Draw one marker per taxel at its world position, colored by force.
-
-        Called each render frame while debug vis is on; no-ops without taxel
-        positions to place.
-        """
-        if self._tactile_visualizer is None or self._sensor is None or self._data is None:
-            return
-        state, _ = self._resolve_newton_state_contacts()
-        positions = self._sensor.taxel_positions_world(state)
-        if positions is None or positions.shape[0] == 0:
-            return
-
-        # Force per taxel, same env-major order as ``positions``.
-        forces = self._data.force.numpy().reshape(-1)
-        frac = np.clip(forces / max(float(self.cfg.force_max), 1e-9), 0.0, 1.0)
-
-        # Color prototype per taxel by force fraction; grow the marker with force.
-        n_colors = len(self.cfg.visualizer_cfg.markers)
-        marker_indices = np.minimum((frac * n_colors).astype(np.int64), n_colors - 1)
-        scales = np.ones((positions.shape[0], 3), dtype=np.float32) * (1.0 + 2.0 * frac[:, None])
-
-        self._tactile_visualizer.visualize(
-            translations=positions.astype(np.float32),
-            marker_indices=marker_indices,
-            scales=scales,
-        )
-
     # -- Batching --------------------------------------------------------- #
 
     def _copy_core_into_batched_buffers(self, env_mask, core_data) -> None:
-        """Split the core's flat env-major output into per-env rows.
+        """Copy each env's taxels from the core's flat output into its own row.
 
-        ``core_data.force`` is a flat ``(num_envs * taxels_per_env,)`` array;
-        reshaping recovers one row per env, copied into the batched buffer for
-        the envs flagged in ``env_mask``.
+        The core produces every env's taxels in one flat array, laid out one env
+        after another ("env-major")::
+
+            [ env0 taxels | env1 taxels | env2 taxels | ... ]   len = num_envs * taxels_per_env
+
+        This splits that into the batched buffers, one row per env. The copy runs
+        in a GPU kernel so we never move data to the host — a host round-trip here
+        would stall the sim every step. ``env_mask`` picks which rows to refresh.
         """
-        rows = env_mask.numpy().nonzero()[0]
-        if rows.size == 0:
-            return
         n_env = self.num_instances
-        src_force = core_data.force.numpy().reshape(n_env, self._taxels_per_env)
-        force_np = self._data.force.numpy()
-        force_np[rows] = src_force[rows]
-        self._data.force.assign(force_np)
+        wp.launch(
+            _scatter_env_force,
+            dim=(n_env, self._taxels_per_env),
+            inputs=[
+                core_data.force,
+                env_mask,
+                self._taxels_per_env,
+                self._data.force,
+            ],
+        )
 
         # World-frame taxel positions, split the same env-major way as force.
         if self._data.positions_w is not None and core_data.positions_w is not None:
-            src_pos = core_data.positions_w.numpy().reshape(
-                n_env, self._taxels_per_env, 3
+            wp.launch(
+                _scatter_env_positions,
+                dim=(n_env, self._taxels_per_env),
+                inputs=[
+                    core_data.positions_w,
+                    env_mask,
+                    self._taxels_per_env,
+                    self._data.positions_w,
+                ],
             )
-            pos_np = self._data.positions_w.numpy()
-            pos_np[rows] = src_pos[rows]
-            self._data.positions_w.assign(pos_np)
 
     # -- Newton backend access (Isaac Lab 3.x NewtonManager) -------------- #
 

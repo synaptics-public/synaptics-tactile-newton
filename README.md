@@ -150,7 +150,7 @@ All of these live in `examples/`.
 |---|---|
 | `standalone_newton.py` | Newton-only drop test. Loads the CTS sensor, drops a known-mass cube, and prints per-taxel / total forces. Rerun web viewer on by default (`--no-viewer` to disable). The fastest way to see the sensor work. |
 | `isaaclab_task.py` | Multi-environment Isaac Lab task. Clones the sensor across environments and reads each environment's taxel forces independently — the RL-ready path. Requires Isaac Lab and a sourced Isaac Sim environment. |
-| `isaaclab_task_demo.py` | Richer, runnable Isaac Lab demo built on the box-built sensor body. Drops a selectable object (`--object cube/sphere/cylinder`, optionally off-center via `--offset_x/--offset_y`) onto the pads, prints a per-environment force summary, and optionally saves per-step artifacts (`force.npy`, `total_force.npy`, `positions_w.npy`, `readout.csv`) plus a force-field heatmap PNG. Also exposes `--force_max`, `--debug_vis` (per-taxel markers), `--steps`, and `--save_dir`. |
+| `isaaclab_task_demo.py` | Richer, runnable Isaac Lab demo built on the box-built sensor body. Drops a selectable object (`--object cube/sphere/cylinder`, optionally off-center via `--offset_x/--offset_y`) onto the pads, prints a per-environment force summary, and optionally saves per-step artifacts (`force.npy`, `total_force.npy`, `positions_w.npy`, `readout.csv`) plus a force-field heatmap PNG. Also exposes `--force_max`, `--steps`, and `--save_dir`. |
 
 Run the standalone example:
 
@@ -158,6 +158,19 @@ Run the standalone example:
 python examples/standalone_newton.py
 python examples/standalone_newton.py --steps 400 --no-viewer
 ```
+
+The Rerun web viewer serves its page on port **9090** but streams the actual
+scene data over gRPC on port **9876**. When running on a remote/headless host
+(SSH, VS Code Remote, a container), forward **both** ports to your local
+machine or the viewer will load an empty page:
+
+```bash
+ssh -L 9090:localhost:9090 -L 9876:localhost:9876 user@host
+```
+
+(VS Code Remote usually auto-forwards 9090; add 9876 manually in the Ports
+panel if the viewer stays blank.) Prefer no live viewer at all? Record to a file
+with `--rrd out.rrd` and open it in the native Rerun desktop app.
 
 Run the Isaac Lab task with the Isaac Lab launcher (it sources Isaac Sim's
 environment, which sets `EXP_PATH`). This requires Isaac Lab installed into your
@@ -170,13 +183,13 @@ cd /path/to/IsaacLab            # must contain the _isaac_sim symlink
 ./isaaclab.sh -p /path/to/examples/isaaclab_task.py --num_envs 10 --viz none
 ```
 
-Run the richer demo (same launch requirements) with a selectable indenter,
-debug markers, and artifact/heatmap capture:
+Run the richer demo (same launch requirements) with a selectable indenter
+and artifact/heatmap capture:
 
 ```bash
 ./isaaclab.sh -p /path/to/examples/isaaclab_task_demo.py \
     --num_envs 4 --object sphere --offset_x 0.004 \
-    --debug_vis --steps 600 --save_dir ./cts_demo_artifacts --heatmap --headless
+    --steps 600 --save_dir ./cts_demo_artifacts --heatmap --headless
 ```
 
 ---

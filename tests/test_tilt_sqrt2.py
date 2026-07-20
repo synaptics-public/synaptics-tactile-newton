@@ -86,12 +86,10 @@ def _peak_normal_force(sim_config, mount_xyzw: np.ndarray) -> float:
     """Press a high-friction probe straight down (world -Z) into the central
     force area of a sensor mounted at ``mount_xyzw``; return the peak total
     normal force [N] over the press."""
-    mount_rot = wp.quat(*(float(v) for v in mount_xyzw))
-
     # Read-only survey to locate the central force area under this mount.
-    survey = SensorRig(
-        sim_config, mount_rotation=mount_rot, mount_quat_xyzw=mount_xyzw
-    ).finalize(build_solver=False)
+    survey = SensorRig(sim_config, mount_quat_xyzw=mount_xyzw).finalize(
+        build_solver=False
+    )
     centroids = survey.taxel_centroids
     if centroids is None:
         pytest.skip("taxel map exposes no centroids")
@@ -102,7 +100,7 @@ def _peak_normal_force(sim_config, mount_xyzw: np.ndarray) -> float:
     target = int(np.argmin(np.linalg.norm(world[:, :2] - centre_xy, axis=1)))
     tw = world[target]
 
-    rig = SensorRig(sim_config, mount_rotation=mount_rot, mount_quat_xyzw=mount_xyzw)
+    rig = SensorRig(sim_config, mount_quat_xyzw=mount_xyzw)
     rig.add_probe(
         velocity_z=PROBE_VELOCITY,
         radius=PROBE_RADIUS,

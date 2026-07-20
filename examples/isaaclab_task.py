@@ -32,7 +32,7 @@ object onto the sensor pads and reads the per-taxel signal through the standard
 ``sensor.data`` property, wrapped in a CLI with on-disk artifact capture.
 
 * **CLI flags** — pick the indenter shape/offset, override force saturation,
-  toggle the per-taxel debug markers, and dump artifacts to disk.
+  and dump artifacts to disk.
 * **Deliberate interaction** — an object is dropped onto the pads; the natural
   impact → settle motion exercises the sensor's rise → saturate (``force_max``)
   → rest response. A lateral offset presses off-center to show the spatial
@@ -40,8 +40,6 @@ object onto the sensor pads and reads the per-taxel signal through the standard
 * **Artifact saving** — per-step per-taxel force (``force.npy``), net force
   vector (``total_force.npy``), world-frame taxel positions (``positions_w.npy``),
   a per-step/per-env ``readout.csv``, and an optional force-field heatmap PNG.
-* **Debug-vis** — ``--debug_vis`` turns on the wrapper's per-taxel markers
-  (blue → red force ramp).
 
 The signal is the CTS's real per-taxel normal force from the Newton solver; there
 are no optical RGB/depth or shear channels.
@@ -53,18 +51,9 @@ per-world cloner hook) and never handed to USD's physics parser: the
 multi-collider CTS body triggers an OpenUSD parallel-parse race that crashes on
 this stack (isaac-sim/IsaacSim#692).
 
-Run (same launch requirements as the other examples). The script boots the
-Omniverse Kit app, so it must be launched with Isaac Sim's environment active
-(this is what sets ``EXP_PATH``). Use the Isaac Lab launcher with your venv
-activated::
-
-    source .venv-newton/bin/activate
-    cd /path/to/IsaacLab            # must contain the _isaac_sim symlink
-
-    # off-center sphere press, 4 envs, markers on, dump artifacts + heatmap:
-    ./isaaclab.sh -p /path/to/examples/isaaclab_task_demo.py \
-        --num_envs 4 --object sphere --offset_x 0.004 \
-        --debug_vis --steps 600 --save_dir ./cts_demo_artifacts --heatmap --viz none
+Run with the Isaac Lab launcher (``./isaaclab.sh -p``); pass ``--help`` for the
+prerequisites, the full flag list, and copy-pasteable example commands (the
+script prints its own path, so the examples run as-is).
 """
 
 import os
@@ -73,7 +62,32 @@ import argparse
 from isaaclab.app import AppLauncher
 
 # --- CLI + app launch (Isaac Lab boilerplate; the app must start first) ----- #
-parser = argparse.ArgumentParser(description="Synaptics CTS tactile sensor demo (box-built body).")
+# Path of THIS script relative to the current directory (whatever it is named in
+# this repo), so the example commands stay correct after the release rename
+# without the noise of a long absolute path.
+_SCRIPT = os.path.relpath(__file__)
+_EXAMPLES = f"""\
+first activate the venv and cd to your Isaac Lab checkout (it boots Kit, so the
+Isaac Sim app env must be active):
+  source .venv-newton/bin/activate
+  cd /path/to/IsaacLab            # must contain the _isaac_sim symlink
+
+then, for example:
+  # live view: watch the press
+  ./isaaclab.sh -p {_SCRIPT} \\
+      --num_envs 4 --object sphere --offset_x 0.004 \\
+      --steps 600 --viz newton
+
+  # artifacts: no viewer, dump per-step force/positions/CSV + a heatmap PNG
+  ./isaaclab.sh -p {_SCRIPT} \\
+      --num_envs 4 --object sphere --offset_x 0.004 \\
+      --steps 600 --save_dir ./cts_demo_artifacts --heatmap --viz none
+"""
+parser = argparse.ArgumentParser(
+    description="Synaptics CTS tactile sensor demo (box-built body).",
+    epilog=_EXAMPLES,
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+)
 parser.add_argument("--num_envs", type=int, default=4, help="Number of environments.")
 parser.add_argument(
     "--object",
@@ -83,8 +97,7 @@ parser.add_argument(
 )
 parser.add_argument("--offset_x", type=float, default=0.0, help="Lateral press offset X [m].")
 parser.add_argument("--offset_y", type=float, default=0.0, help="Lateral press offset Y [m].")
-parser.add_argument("--force_max", type=float, default=10.0, help="Per-taxel force saturation [N].")
-parser.add_argument("--debug_vis", action="store_true", help="Draw per-taxel force markers.")
+parser.add_argument("--force_max", type=float, default=100.0, help="Per-taxel force saturation [N].")
 parser.add_argument(
     "--steps",
     type=int,
@@ -189,8 +202,8 @@ VIEWER_LOOKAT = (-0.087, -0.060, 0.033)
 # attributes, so they are applied to the live viewer in
 # ``_slow_viewer_navigation``. The Rerun viewer navigates browser-side and is
 # left untouched.
-VIEWER_MOVE_SPEED = 0.01        # WASD fly speed (ViewerGL default 0.04)
-VIEWER_ZOOM_SENSITIVITY = 0.06  # scroll-wheel zoom (ViewerGL default 0.15)
+VIEWER_MOVE_SPEED = 0.1          # WASD fly speed [m/s] (ViewerGL default 4.0)
+VIEWER_ZOOM_SENSITIVITY = 0.015  # scroll-wheel zoom (ViewerGL default 0.15)
 
 # Rerun's 3D view has no FOV control (its EyeControls3D ignores the cfg focal
 # length) and uses a narrower default than the Newton viewer, so VIEWER_EYE frames
@@ -527,7 +540,6 @@ class TactileSensorSceneCfg(InteractiveSceneCfg):
         sensing_shape_pattern=SENSING_PATTERN,
         taxel_map=TAXEL_MAP,
         force_max=args_cli.force_max,
-        debug_vis=args_cli.debug_vis,  # per-taxel markers colored by force
     )
 
 
@@ -603,6 +615,24 @@ def _save_artifacts(save_dir, steps, forces, totals, positions):
         _save_heatmap(save_dir, force_arr, positions)
 
 
+def _viewer_open(sim):
+    """True while at least one interactive viewer window is still open.
+
+    Closing the Newton/Rerun window does NOT stop the Kit app
+    (``simulation_app.is_running()`` stays True), so the keep-alive loop watches
+    the viewer itself: the manager drops a closed viewer from ``sim._visualizers``,
+    and a still-live viewer reports ``is_running()``.
+    """
+    for viz in getattr(sim, "_visualizers", []):
+        viewer = getattr(viz, "_viewer", None)
+        if viewer is None:
+            continue
+        is_running = getattr(viewer, "is_running", None)
+        if is_running is None or is_running():
+            return True
+    return False
+
+
 def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
     """Step the sim, print a per-env summary, and (optionally) capture artifacts."""
     sim_dt = sim.get_physics_dt()
@@ -650,6 +680,22 @@ def run_simulator(sim: sim_utils.SimulationContext, scene: InteractiveScene):
             args_cli.save_dir, frames_step, frames_force, frames_total, frames_pos
         )
 
+    # With an interactive viewer up, don't tear the window down when the measured
+    # run ends: keep stepping so the resting press stays live and inspectable
+    # until the viewer window is closed.
+    requested = getattr(args_cli, "visualizer", None) or []
+    if requested and "none" not in requested:
+        print(
+            "[INFO]: Measured run complete; leaving the viewer open "
+            "(close the window to exit)."
+        )
+        # Closing the window does NOT stop the Kit app, so watch the viewer
+        # itself (see ``_viewer_open``) or this loop never ends.
+        while simulation_app.is_running() and _viewer_open(sim):
+            scene.write_data_to_sim()
+            sim.step()
+            scene.update(sim_dt)
+
 
 def _viewer_cfgs():
     """Visualizer cfgs that start the selected interactive viewer at VIEWER_EYE.
@@ -691,8 +737,8 @@ def _slow_viewer_navigation(sim):
         viewer = getattr(viz, "_viewer", None)
         if viewer is None:
             continue
-        if hasattr(viewer, "_camera_speed"):
-            viewer._camera_speed = VIEWER_MOVE_SPEED
+        if hasattr(viewer, "_cam_speed"):
+            viewer._cam_speed = VIEWER_MOVE_SPEED
         if hasattr(viewer, "_camera_dolly_scroll_sensitivity"):
             viewer._camera_dolly_scroll_sensitivity = VIEWER_ZOOM_SENSITIVITY
         if hasattr(viewer, "_camera_dolly_drag_sensitivity"):

@@ -49,7 +49,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from sensor_rig import SensorRigFactory, local_mm_to_world
+from sensor_rig import DEFAULT_SENSOR_LABEL, SensorRigFactory, local_mm_to_world
 
 pytestmark = pytest.mark.sim
 
@@ -73,18 +73,20 @@ def _rig_with_positions(sim_config):
 
 def test_positions_w_shape(sim_config):
     rig = _rig_with_positions(sim_config)
-    pw = rig.sensor.data.positions_w.numpy()
-    assert pw.shape == (rig.sensor.num_taxels, 3)
+    sensor = rig.sensors[DEFAULT_SENSOR_LABEL]
+    pw = sensor.data.positions_w.numpy()
+    assert pw.shape == (sensor.num_taxels, 3)
     assert np.isfinite(pw).all()
 
 
 def test_positions_w_matches_geometry(sim_config):
     rig = _rig_with_positions(sim_config)
-    centroids = rig.sensor.taxel_centroids
+    sensor = rig.sensors[DEFAULT_SENSOR_LABEL]
+    centroids = sensor.taxel_centroids
     if centroids is None:
         pytest.skip("taxel map exposes no centroids to cross-check against")
 
-    pw = rig.sensor.data.positions_w.numpy()
+    pw = sensor.data.positions_w.numpy()
     gt = np.array([local_mm_to_world(c) for c in np.asarray(centroids)])
     err = np.linalg.norm(pw - gt, axis=1)
     assert err.max() < _POS_TOL, (

@@ -54,7 +54,9 @@ from synaptics_tactile_newton import CTSSensor
 _ASSETS = Path(__file__).resolve().parent.parent / "synaptics_tactile_newton" / "assets"
 DEFAULT_SENSOR_USD = _ASSETS / "cts0.0.usd"
 DEFAULT_TAXEL_MAP = _ASSETS / "cts0.0_taxel_map.json"
-SENSING_PATTERN = "*/forceArea_*"
+DEFAULT_SENSOR_LABEL = "default"
+_FORCE_AREA_PATTERN = "forceArea_*"
+_CONTACT_GAP = 1.0e-3
 
 # +90 deg about X so the +Y-pointing force areas face +Z (up). quat = (x,y,z,w).
 _HALF = math.pi / 4.0
@@ -172,13 +174,12 @@ class SensorRig:
     # Latest (sim_time, state, contacts) logged to the viewer (for GL hold loop).
     _LAST = None
 
-    def __init__(self, config: SimConfig, mount_rotation=MOUNT_ROTATION,
-                 mount_quat_xyzw=MOUNT_QUAT_XYZW):
+    def __init__(self, config: SimConfig, mount_quat_xyzw=MOUNT_QUAT_XYZW,
+                 add_default_sensor: bool = True):
         self.config = config
         # Mount rotation applied to the loaded USD and baked into the sensor's
-        # static press axis. ``mount_quat_xyzw`` is the same rotation as a numpy
-        # (x, y, z, w) array, used by ``local_to_world`` for probe placement.
-        self.mount_rotation = mount_rotation
+        # static press axis. It is also used by ``local_to_world`` for probe
+        # placement.
         self.mount_quat_xyzw = np.asarray(mount_quat_xyzw, dtype=np.float64)
         if config.device is not None:
             wp.set_device(config.device)
@@ -193,11 +194,19 @@ class SensorRig:
         self._usd_path = usd_path
 
         self.builder = newton.ModelBuilder()
+        self.builder.rigid_gap = _CONTACT_GAP
         self.builder.add_ground_plane()
-        self.builder.add_usd(
-            str(usd_path),
-            xform=wp.transform((0.0, 0.0, SENSOR_Z), self.mount_rotation),
-        )
+
+        # Sensors are static world shapes. Their CTSSensor instances can only
+        # be created after the model is finalized.
+        self._sensor_rotations: dict[str, object] = {}
+        self.sensors: dict[str, CTSSensor] = {}
+        if add_default_sensor:
+            self.add_sensor(
+                (0.0, 0.0, SENSOR_Z),
+                self.mount_quat_xyzw,
+                label=DEFAULT_SENSOR_LABEL,
+            )
 
         # body idx -> spatial velocity command (linear xyz, angular xyz). The
         # probe is DISPLACEMENT-controlled: each substep we prescribe the body's
@@ -210,9 +219,7 @@ class SensorRig:
         self._kinematic_pos: dict[int, object] = {}
         # body indices that are free dynamic test bodies (for settle detection)
         self._free_bodies: list[int] = []
-
         self.model = None
-        self.sensor: Optional[CTSSensor] = None
         self.solver = None
         self.contacts = None
         self.state_0 = None
@@ -328,6 +335,79 @@ class SensorRig:
         self._kinematic[body] = (0.0, 0.0, float(velocity_z), 0.0, 0.0, 0.0)
         return body
 
+    def add_sensor(
+        self,
+        position,
+        orientation_xyzw,
+        label: str,
+    ) -> None:
+        """Add a STATIC sensor (``body == -1``) at a fixed world pose.
+
+        Loads the CTS USD into a scratch builder and merges it with a
+        ``label_prefix`` so a per-sensor glob scopes one ``CTSSensor`` to this
+        sensor's pads. ``position`` [m] and ``orientation_xyzw`` (x, y, z, w)
+        place the sensor; the orientation is also baked into the press axis.
+        After ``finalize()``, the resulting ``CTSSensor`` is available as
+        ``rig.sensors[label]``.
+
+        Multiple sensors share one scene, so a single ball can press several and
+        viewer/step/settle work unchanged. Loading as static colliders
+        (``body == -1``) keeps a single rigid body from owning many colliders,
+        which the USD parser cannot handle.
+        """
+        if label in self._sensor_rotations:
+            raise ValueError(f"sensor label already exists: {label!r}")
+        pos = np.asarray(position, dtype=np.float64).reshape(3)
+        q = np.asarray(orientation_xyzw, dtype=np.float64).reshape(4)
+        rot = wp.quat(float(q[0]), float(q[1]), float(q[2]), float(q[3]))
+        # Merge via a scratch builder so a label prefix distinguishes repeated
+        # loads of the same USD (add_usd cannot prefix labels on its own).
+        sub = newton.ModelBuilder()
+        sub.rigid_gap = _CONTACT_GAP
+        sub.add_usd(str(self._usd_path))
+        self.builder.add_builder(
+            sub,
+            xform=wp.transform(
+                (float(pos[0]), float(pos[1]), float(pos[2])), rot
+            ),
+            label_prefix=f"{label}/",
+        )
+        self._sensor_rotations[label] = rot
+
+    def add_ball(
+        self,
+        mass: float,
+        radius: float,
+        xy: tuple = (0.0, 0.0),
+        height: float = 0.03,
+        start_z: Optional[float] = None,
+        mu: float = 1.0,
+        label: str = "ball",
+    ) -> int:
+        """Add a free dynamic ball of known mass above the sensors.
+
+        ``start_z`` sets the centre's absolute world Z [m] (default
+        ``SENSOR_Z + height``). The ball also supplies the free joint the MuJoCo
+        solver requires, so a scene of only static sensors + one ball is valid.
+        """
+        z0 = start_z if start_z is not None else SENSOR_Z + height
+        body = self.builder.add_body(
+            xform=wp.transform((xy[0], xy[1], z0), wp.quat_identity()),
+            label=label,
+        )
+        cfg = newton.ModelBuilder.ShapeConfig()
+        cfg.density = float(mass) / ((4.0 / 3.0) * math.pi * radius**3)
+        cfg.mu = float(mu)
+        self.builder.add_shape_sphere(
+            body=body,
+            radius=radius,
+            cfg=cfg,
+            color=(1.0, 0.2, 0.2),
+            label=f"{label}_shape",
+        )
+        self._free_bodies.append(body)
+        return body
+
     # --- finalize ---------------------------------------------------------- #
     def finalize(self, build_solver: bool = True) -> "SensorRig":
         """Build the model, sensor and contacts.
@@ -338,6 +418,13 @@ class SensorRig:
         rejects.
         """
         cfg = self.config
+        static_shapes = [
+            shape for shape, body in enumerate(self.builder.shape_body) if body == -1
+        ]
+        for offset, shape_a in enumerate(static_shapes):
+            for shape_b in static_shapes[offset + 1:]:
+                self.builder.add_shape_collision_filter_pair(shape_a, shape_b)
+
         self.model = self.builder.finalize()
         self.state_0 = self.model.state()
         self.state_1 = self.model.state()
@@ -373,14 +460,15 @@ class SensorRig:
                 self.model, njmax=cfg.njmax, nconmax=cfg.nconmax
             )
 
-        # Sensor must be created BEFORE model.contacts() to request the force buffer.
-        self.sensor = CTSSensor(
-            self.model,
-            sensing_shape_pattern=SENSING_PATTERN,
-            taxel_map=cfg.taxel_map,
-            mount_rotation=self.mount_rotation,
-            force_max=cfg.force_max,
-        )
+        # Sensors must be created BEFORE model.contacts() to request the force buffer.
+        for label, rotation in self._sensor_rotations.items():
+            self.sensors[label] = CTSSensor(
+                self.model,
+                sensing_shape_pattern=f"{label}/*/{_FORCE_AREA_PATTERN}",
+                taxel_map=cfg.taxel_map,
+                mount_rotation=rotation,
+                force_max=cfg.force_max,
+            )
         self.contacts = self.model.contacts()
         if cfg.viewer:
             self._ensure_viewer()
@@ -538,7 +626,8 @@ class SensorRig:
                 )
                 self.solver.update_contacts(self.contacts, self.state_1)
                 self.state_0, self.state_1 = self.state_1, self.state_0
-            self.sensor.update(self.state_0, self.contacts)
+            for sensor in self.sensors.values():
+                sensor.update(self.state_0, self.contacts)
             if self.viewer is not None:
                 self.viewer.begin_frame(self._sim_time)
                 self.viewer.log_state(self.state_0)
@@ -577,11 +666,11 @@ class SensorRig:
     # --- readouts ---------------------------------------------------------- #
     def forces(self) -> np.ndarray:
         """Per-taxel normal force [N], shape (num_taxels,)."""
-        return self.sensor.data.force.numpy()
+        return self.sensors[DEFAULT_SENSOR_LABEL].data.force.numpy()
 
     def total_force_vector(self) -> np.ndarray:
         """Net normal-force vector [N] on the sensing surface, shape (3,)."""
-        return self.sensor.data.total_force.numpy()
+        return self.sensors[DEFAULT_SENSOR_LABEL].data.total_force.numpy()
 
     def total_force(self) -> float:
         """Scalar net normal force [N] = magnitude of the total-force vector."""
@@ -596,13 +685,13 @@ class SensorRig:
 
     @property
     def num_taxels(self) -> int:
-        return self.sensor.num_taxels
+        return self.sensors[DEFAULT_SENSOR_LABEL].num_taxels
 
     @property
     def taxel_centroids(self) -> Optional[np.ndarray]:
-        return self.sensor.taxel_centroids
+        return self.sensors[DEFAULT_SENSOR_LABEL].taxel_centroids
 
     @property
     def taxel_names(self):
         """Per-taxel force-area names in output row order, or None."""
-        return self.sensor.taxel_names
+        return self.sensors[DEFAULT_SENSOR_LABEL].taxel_names
