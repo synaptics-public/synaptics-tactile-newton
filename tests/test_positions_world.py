@@ -31,11 +31,11 @@ Two independent checks on the world-frame taxel positions the sensor reports:
 
 1. **Geometry cross-check** (``test_positions_w_matches_geometry``): the sensor
    derives ``positions_w`` from the Newton *shape transforms*; the harness's
-   ``local_mm_to_world`` derives the same points from the *taxel-map centroids*
-   (a separate data path: mm -> m scale + mount rotation + lift). The two must
-   agree, which catches a frame/units regression in the world-position kernel
-   (e.g. treating the millimetre centroids as metres, or skipping the sensor's
-   placement transform).
+   ``centroid_to_world`` derives the same points from the *taxel-map centroids*
+   (a separate data path: the map's declared units -> metres, then mount
+   rotation + lift). The two must agree, which catches a frame/units regression
+   in either path — a wrong unit scale applied to the centroids, or a skipped
+   placement transform in the world-position kernel.
 
 2. **Motion tracking** (``test_positions_w_tracks_body_motion``): the rig's CTS
    is world-static (body ``-1``), so it never exercises the moving-body branch
@@ -49,7 +49,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from sensor_rig import DEFAULT_SENSOR_LABEL, SensorRigFactory, local_mm_to_world
+from sensor_rig import DEFAULT_SENSOR_LABEL, SensorRigFactory, centroid_to_world
 
 pytestmark = pytest.mark.sim
 
@@ -87,7 +87,7 @@ def test_positions_w_matches_geometry(sim_config):
         pytest.skip("taxel map exposes no centroids to cross-check against")
 
     pw = sensor.data.positions_w.numpy()
-    gt = np.array([local_mm_to_world(c) for c in np.asarray(centroids)])
+    gt = np.array([centroid_to_world(c) for c in np.asarray(centroids)])
     err = np.linalg.norm(pw - gt, axis=1)
     assert err.max() < _POS_TOL, (
         f"positions_w disagrees with the taxel-map geometry by up to "

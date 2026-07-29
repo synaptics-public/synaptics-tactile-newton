@@ -44,7 +44,7 @@ import warnings
 import numpy as np
 import pytest
 
-from sensor_rig import GRAVITY, SENSOR_Z, SensorRigFactory, local_mm_to_world
+from sensor_rig import GRAVITY, SENSOR_Z, SensorRigFactory, centroid_to_world
 
 pytestmark = pytest.mark.sim
 
@@ -62,7 +62,7 @@ def whole_sensor_load(sim_config):
     centroids = base.taxel_centroids
     if centroids is None:
         pytest.skip("taxel map exposes no centroids")
-    world = np.array([local_mm_to_world(c) for c in centroids], dtype=np.float64)
+    world = np.array([centroid_to_world(c) for c in centroids], dtype=np.float64)
     cx, cy = world[:, 0].mean(), world[:, 1].mean()
     hx = (world[:, 0].max() - world[:, 0].min()) / 2.0 + PLATE_MARGIN
     hy = (world[:, 1].max() - world[:, 1].min()) / 2.0 + PLATE_MARGIN

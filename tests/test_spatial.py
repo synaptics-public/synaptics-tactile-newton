@@ -40,7 +40,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from sensor_rig import SensorRigFactory, local_mm_to_world
+from sensor_rig import SensorRigFactory, centroid_to_world
 
 pytestmark = pytest.mark.sim
 
@@ -85,7 +85,7 @@ def test_response_is_local(sim_config, centroids, target):
         pytest.skip(f"taxel {target} out of range ({len(centroids)} taxels)")
 
     factory = SensorRigFactory(config=sim_config)
-    world = local_mm_to_world(centroids[target])
+    world = centroid_to_world(centroids[target])
     rig, _probe = _press_at(factory, world)
 
     forces = rig.forces()
@@ -101,7 +101,7 @@ def test_response_is_local(sim_config, centroids, target):
     assert forces[top] > 5.0 * max(median, 1.0e-6), "response not concentrated"
 
     # And it should be spatially near the probe (in world XY).
-    top_world = local_mm_to_world(centroids[top])
+    top_world = centroid_to_world(centroids[top])
     dist_xy = float(np.linalg.norm(top_world[:2] - world[:2]))
     assert dist_xy <= _LOCALITY_RADIUS, (
         f"dominant taxel {top} is {dist_xy*1e3:.1f} mm from probe over taxel {target}"

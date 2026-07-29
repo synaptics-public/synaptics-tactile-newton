@@ -78,10 +78,6 @@ CAMERA_POS = (0.039113, -0.074668, 0.039714)
 CAMERA_TARGET = (0.0, 0.0, 0.011259)
 CAMERA_UP = (0.018591, 0.120664, 0.992519)
 
-# Taxel-map centroids are in millimetres (exported frame); the USD geometry is
-# in metres, so convert before placing world-frame probes over a taxel.
-USD_SCALE = 1.0e-3
-
 GRAVITY = 9.81
 
 
@@ -100,14 +96,17 @@ def quat_mul_xyzw(q1, q2) -> np.ndarray:
     )
 
 
-def local_to_world(centroid_mm, quat_xyzw=MOUNT_QUAT_XYZW) -> np.ndarray:
-    """Map a taxel-map centroid (mm, body-local) to a world position [m].
+def local_to_world(centroid, quat_xyzw=MOUNT_QUAT_XYZW) -> np.ndarray:
+    """Map a taxel centroid (body-local, metres) to a world position [m].
 
-    Applies the same scale + mount rotation + lift used when the USD is loaded,
-    so a probe placed here sits above that force area. ``quat_xyzw`` defaults to
-    the upright mount; pass a composed tilt to target a tilted sensor.
+    Applies the same mount rotation + lift used when the USD is loaded, so a
+    probe placed here sits above that force area. ``quat_xyzw`` defaults to the
+    upright mount; pass a composed tilt to target a tilted sensor.
+
+    Takes ``CTSSensor.taxel_centroids`` directly — those are already metres, in
+    the same frame as the USD geometry, so there is no unit conversion here.
     """
-    v = np.asarray(centroid_mm, dtype=np.float64).reshape(3) * USD_SCALE
+    v = np.asarray(centroid, dtype=np.float64).reshape(3)
     q = np.asarray(quat_xyzw, dtype=np.float64).reshape(4)
     qxyz = q[:3]
     w = q[3]
@@ -117,9 +116,9 @@ def local_to_world(centroid_mm, quat_xyzw=MOUNT_QUAT_XYZW) -> np.ndarray:
     return world
 
 
-def local_mm_to_world(centroid_mm) -> np.ndarray:
+def centroid_to_world(centroid) -> np.ndarray:
     """Map a centroid to world [m] under the default upright mount rotation."""
-    return local_to_world(centroid_mm, MOUNT_QUAT_XYZW)
+    return local_to_world(centroid, MOUNT_QUAT_XYZW)
 
 
 @dataclass

@@ -40,7 +40,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from sensor_rig import SensorRigFactory, local_mm_to_world
+from sensor_rig import SensorRigFactory, centroid_to_world
 
 pytestmark = pytest.mark.sim
 
@@ -68,7 +68,7 @@ def indentation_curve(sim_config):
     if centroids is None:
         pytest.skip("taxel map exposes no centroids")
     world = np.array(
-        [local_mm_to_world(c) for c in np.asarray(centroids, dtype=np.float64)]
+        [centroid_to_world(c) for c in np.asarray(centroids, dtype=np.float64)]
     )
     centre_xy = world[:, :2].mean(axis=0)
     target = int(np.argmin(np.linalg.norm(world[:, :2] - centre_xy, axis=1)))

@@ -37,7 +37,7 @@ from __future__ import annotations
 import numpy as np
 import pytest
 
-from sensor_rig import GRAVITY, SENSOR_Z, SensorRigFactory, local_mm_to_world
+from sensor_rig import GRAVITY, SENSOR_Z, SensorRigFactory, centroid_to_world
 
 pytestmark = pytest.mark.sim
 
@@ -69,7 +69,7 @@ def dead_weight_run(sim_config):
     centroids = base.taxel_centroids
     if centroids is None:
         pytest.skip("taxel map exposes no centroids")
-    world = np.array([local_mm_to_world(c) for c in np.asarray(centroids)])
+    world = np.array([centroid_to_world(c) for c in np.asarray(centroids)])
     centre_xy = world[:, :2].mean(axis=0)
     target = int(np.argmin(np.linalg.norm(world[:, :2] - centre_xy, axis=1)))
     drop_xy = (float(world[target, 0]), float(world[target, 1]))

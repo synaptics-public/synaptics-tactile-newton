@@ -38,6 +38,44 @@ from .output import CTSOutput
 from .kernels import _extract_normal_forces, _taxel_world_positions, _reduce_total_force
 
 
+#: Length units a taxel map may declare in its ``"units"`` field, and their
+#: factor to metres.
+_CENTROID_UNITS = {
+    "m": 1.0, "meter": 1.0, "meters": 1.0, "metre": 1.0, "metres": 1.0,
+    "mm": 1.0e-3, "millimeter": 1.0e-3, "millimeters": 1.0e-3,
+    "millimetre": 1.0e-3, "millimetres": 1.0e-3,
+    "cm": 1.0e-2, "centimeter": 1.0e-2, "centimeters": 1.0e-2,
+    "centimetre": 1.0e-2, "centimetres": 1.0e-2,
+}
+
+
+def centroid_scale_to_meters(taxel_map: dict) -> float:
+    """Factor converting a taxel map's centroids to metres.
+
+    The map is a CAD export, so it is authored in the CAD's units (FreeCAD:
+    millimetres) and names them in its ``"units"`` field. Every consumer should
+    resolve the unit through this function rather than assuming one — that is
+    what keeps ``CTSSensor.taxel_centroids`` SI alongside the sensor's other
+    output, and what lets a map authored in different units drop straight in.
+
+    A map with no ``"units"`` predates the field and is millimetres.
+
+    Raises:
+        ValueError: the map declares a unit we do not know.
+    """
+    units = taxel_map.get("units")
+    if units is None:
+        return 1.0e-3
+
+    scale = _CENTROID_UNITS.get(str(units).strip().lower())
+    if scale is None:
+        raise ValueError(
+            f"taxel map declares unknown units {units!r}; expected one of "
+            f"{', '.join(sorted(set(_CENTROID_UNITS)))}"
+        )
+    return scale
+
+
 class CTSSensor:
     """Synaptics Capacitive Tactile Sensor (CTS) for Newton.
 
@@ -58,7 +96,8 @@ class CTSSensor:
         taxel_map: Optional taxel map (``<out>_taxel_map.json`` path or parsed
             dict). When given it OVERRIDES ``sensing_axis`` with the map's shared
             press axis and exposes per-taxel names/centroids (matched to shapes
-            BY NAME, so robust to shape ordering).
+            BY NAME, so robust to shape ordering). Centroids are converted from
+            the map's declared ``"units"`` (default millimetres) to metres.
         mount_rotation: Optional (x, y, z, w) quaternion baked once into the
             press axis at construction. Use only for a sensor FIXED to the world
             (all taxel shapes static, body == -1) whose USD was loaded with a
@@ -162,7 +201,8 @@ class CTSSensor:
 
         Requires the two keys this sensor uses: ``"axis"`` (the shared press
         axis 3-vector) and ``"taxels"`` (per-force-area entries keyed by name,
-        each with a ``"centroid"``).
+        each with a ``"centroid"``). The optional ``"units"`` key names the
+        centroids' length unit (default ``"mm"``, the CAD export frame).
         """
         if isinstance(taxel_map, (str, Path)):
             with open(taxel_map, "r") as fh:
@@ -201,6 +241,7 @@ class CTSSensor:
             str(labels[i]).rsplit("/", 1)[-1]
             for i in self._sensor_contact.sensing_obj_idx
         ]
+        centroid_scale = centroid_scale_to_meters(taxel_map)
         centroids = np.empty((self._num_taxels, 3), dtype=np.float32)
         for row, name in enumerate(names):
             entry = taxels.get(name)
@@ -214,7 +255,7 @@ class CTSSensor:
                 raise KeyError(
                     f"taxel map entry '{name}' has no 'centroid'"
                 )
-            centroids[row] = entry["centroid"]
+            centroids[row] = np.asarray(entry["centroid"], dtype=np.float64) * centroid_scale
         self._taxel_names = names
         self._taxel_centroids = centroids
         return np.asarray(axis, dtype=np.float32)
@@ -235,7 +276,12 @@ class CTSSensor:
 
     @property
     def taxel_centroids(self):
-        """Per-taxel (num_taxels, 3) local-frame centroids, or None."""
+        """Per-taxel (num_taxels, 3) body-local centroids **in metres**, or None.
+
+        The taxel map authors these in its own ``"units"`` (millimetres, from
+        the CAD export); they are converted on load so this is SI like the rest
+        of the sensor's output.
+        """
         return self._taxel_centroids
 
     @property

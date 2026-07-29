@@ -8,7 +8,7 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) (see
 `pyproject.toml` for the current version).
 
-## [Unreleased]
+## [0.1.1] - 2026-07-29
 
 ### Changed
 
@@ -20,6 +20,7 @@ and the project uses [Semantic Versioning](https://semver.org/) (see
   host round-trip, and the debug-vis markers reuse the world positions the
   sensor already computes on-GPU each step.
 - Removed --debug_vis from IsaacLab demo due to complexity and not being useful.
+- taxel_map.json stores units of "mm" inside of it.
 
 ### Documentation
 

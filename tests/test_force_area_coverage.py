@@ -49,7 +49,7 @@ import os
 import numpy as np
 import pytest
 
-from sensor_rig import SensorRigFactory, local_mm_to_world
+from sensor_rig import SensorRigFactory, centroid_to_world
 
 pytestmark = pytest.mark.sim
 
@@ -67,7 +67,7 @@ LOCALITY_MM = 3.0            # accepted offset between pressed and reported area
 
 def _press_area(factory, centroids, target):
     """Press over force area ``target``; return the per-taxel force array."""
-    world = local_mm_to_world(centroids[target])
+    world = centroid_to_world(centroids[target])
     start_z = float(world[2]) + PROBE_RADIUS + PROBE_CLEARANCE
     rig = factory()
     rig.add_probe(
@@ -105,8 +105,8 @@ def coverage(sim_config):
         target_f = float(forces[target])
         dist_mm = float(
             np.linalg.norm(
-                local_mm_to_world(centroids[dominant])
-                - local_mm_to_world(centroids[target])
+                centroid_to_world(centroids[dominant])
+                - centroid_to_world(centroids[target])
             )
             * 1.0e3
         )
