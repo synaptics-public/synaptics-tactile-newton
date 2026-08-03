@@ -8,6 +8,31 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) (see
 `pyproject.toml` for the current version).
 
+## [0.2.0] - 2026-07-31
+
+### Added
+
+- **Isaac Sim Kit extension** (`isaacsim_ext/synaptics.sensors.tactile`), a shell
+  over this package that brings the sensor into the Isaac Sim GUI: a
+  `Create → Sensors` spawn menu, a one-click demo scene, a live per-taxel
+  heatmap with saturation indication, single-physics-step transport controls,
+  and a PASS/FAIL environment preflight. No signal maths lives in the extension.
+  Requires Isaac Sim 6.0.1 on its Newton experience, MuJoCo GPU solver.
+- Five headless Kit harnesses under the extension's `scripts/`, each exiting
+  non-zero on failure: environment preflight, spawn/panel smoke, scene bring-up,
+  a dead-weight check mirroring `tests/test_dead_weight.py`, and robustness
+  (full-array press, two sensors on one stage).
+
+### Documentation
+
+- README: how to install the extension via Kit's extension search path, without
+  copying anything into Isaac Sim's own `exts/`. Note that `PYTHONPATH` has no
+  effect on Kit's embedded Python.
+- README: presses wider than the taxel array under-read, because the module base
+  is coplanar with the force areas in the shipped asset.
+- README: the extension mounts the sensor statically, for the same OpenUSD
+  multi-collider reason the Isaac Lab example builds from boxes.
+
 ## [0.1.1] - 2026-07-29
 
 ### Changed

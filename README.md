@@ -22,6 +22,8 @@ synaptics_tactile_newton/        # the deliverable package
   kernels.py                     #   Warp signal-generation kernels
   isaaclab/                      #   OPTIONAL Isaac Lab wrapper (guarded import)
   assets/                        #   baked CTS USD geometry + taxel map
+isaacsim_ext/                    # OPTIONAL Isaac Sim Kit extension
+  synaptics.sensors.tactile/     #   spawn menu, live taxel panel, diagnostics
 examples/                        # standalone Newton, Isaac Lab task
 tests/                           # pytest suite
 README.md                        # this document
@@ -142,6 +144,46 @@ pip install PyOpenGL-accelerate      # only needed for the --viz newton window
 
 ---
 
+## Optional: Isaac Sim extension
+
+`isaacsim_ext/synaptics.sensors.tactile` is a Kit extension that brings the same
+sensor into the Isaac Sim GUI: a `Create → Sensors` spawn menu, a one-click demo
+scene, and a live per-taxel heatmap. It is a **shell over this package** — every
+force value comes from `CTSSensor`, so the extension can never drift from the
+model the tests cover.
+
+Requires Isaac Sim **6.0.1** started on its **Newton** experience
+(`./isaac-sim.newton.sh`); the default app disables the Newton backend and runs
+PhysX.
+
+**Install without copying anything into Isaac Sim.** Kit treats any folder as an
+extension search path, so point it at this repo and leave the Isaac install
+untouched:
+
+```bash
+# make this package importable inside Kit, then load the extension from here
+<isaac-sim>/isaac-sim.newton.sh \
+    --/app/python/extraPaths/0=/path/to/synaptics-tactile-newton \
+    --ext-folder /path/to/synaptics-tactile-newton/isaacsim_ext \
+    --enable synaptics.sensors.tactile
+```
+
+For a permanent install, `pip install` this package into Isaac Sim's python
+(`<isaac-sim>/python.sh -m pip install .`) and add the `isaacsim_ext` folder
+under *Window → Extensions → ⚙ → extension search paths*.
+
+> `PYTHONPATH` has **no effect** — Kit's embedded Python ignores it. Copying the
+> extension into Isaac Sim's own `exts/` folder also works but is not
+> recommended: it duplicates the code and has to be redone on every upgrade.
+
+Then `Window → Synaptics Tactile Sensor` → **Load Scenario** → **Play**.
+
+Full documentation, including the diagnostics and the headless test harnesses,
+is in
+[`isaacsim_ext/synaptics.sensors.tactile/docs/README.md`](isaacsim_ext/synaptics.sensors.tactile/docs/README.md).
+
+---
+
 ## Examples
 
 All of these live in `examples/`.
@@ -205,6 +247,19 @@ The suite covers dead-weight totals, per-taxel indentation and spatial response,
 force-area coverage, and saturation. Tests marked `sim` run a real Newton
 simulation and need the bundled CTS USD.
 
+The Isaac Sim extension has its own harnesses, which run **inside Kit** because
+a bare `python.sh` cannot import `pxr`, `warp`, `newton` or the Newton backend.
+Each exits non-zero on failure, so they double as CI gates — see
+[the extension's README](isaacsim_ext/synaptics.sensors.tactile/docs/README.md):
+
+| Harness | Checks |
+|---|---|
+| `kit_diagnostics.py` | environment preflight: versions, backend, solver, assets |
+| `kit_smoke.py` | spawn a sensor, build the panel |
+| `kit_scenario_test.py` | the demo scene reaches a state the sensor can bind to |
+| `kit_dead_weight.py` | drop a known mass, Σ taxel force ≈ *m·g* |
+| `kit_robustness.py` | full-array press; two sensors on one stage |
+
 ---
 
 ## Limitations & known issues
@@ -227,6 +282,19 @@ simulation and need the bundled CTS USD.
   parsed. This is a solid, portable path; referencing the multi-collider sensor
   as a dynamic USD rigid body is not supported on the current stack.
 
+- **In the Isaac Sim extension the sensor is statically mounted**, for the same
+  OpenUSD reason as above: static colliders are unaffected by that race at any
+  count, so a bench-mounted sensor pressed by a moving indenter works today
+  while a robot-link-mounted one does not. That needs OpenUSD ≥ 26.5, which
+  arrives with Newton 1.5.0.
+
+- **Presses wider than the taxel array under-read.** In the shipped asset the
+  module base is coplanar with the force areas and extends further out, so a
+  flat indenter overhanging the array rests on the base and the taxels barely
+  register. Keep contact inside the array (x ±14.75 mm, y ±6.45 mm on CTS0.0).
+  Real hardware has a rubber pad proud of the base, so this is an asset-fidelity
+  gap rather than a physical one.
+
 - **The box-built sensor body is kinematic (perfectly rigid).** For stable
   contact the solver step must stay below roughly `sqrt(m / contact_ke)`; a body
   gets a per-world shape index (so forces report in every environment), but with
@@ -248,10 +316,15 @@ This release was validated on the following stack:
 | Newton | 1.2.0 |
 | Warp (`warp-lang`) | 1.13.0 |
 | `usd-core` | 25.11 |
-| Isaac Sim (for the Isaac Lab example) | 6.0.0 |
+| Isaac Sim (Isaac Lab example) | 6.0.0 |
+| Isaac Sim (Kit extension) | **6.0.1**, Newton experience |
+| `isaacsim.physics.newton` (Kit extension) | 0.8.x |
 | Isaac Lab (for the Isaac Lab example) | 3.0 |
 | GPU | NVIDIA RTX (CUDA) |
 
 Other versions may work but are untested. The Isaac Sim / Isaac Lab versions
-apply only to the optional Isaac Lab example; the core Newton package and the
+apply only to the optional integrations; the core Newton package and the
 standalone example do not need them.
+
+The Kit extension needs Isaac Sim **6.0** or newer, because the Newton backend
+(`isaacsim.physics.newton`) does not exist before it — 5.x is PhysX-only.

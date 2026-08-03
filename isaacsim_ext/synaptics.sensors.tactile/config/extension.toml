@@ -1,0 +1,24 @@
+[package]
+version = "0.1.0"
+title = "Synaptics Tactile Sensor (CTS)"
+description = "Capacitive Tactile Sensor (CTS) for Isaac Sim, bound to the Newton physics backend."
+authors = ["Synaptics Incorporated"]
+category = "Simulation"
+keywords = ["tactile", "sensor", "contact", "force", "newton", "synaptics"]
+readme = "docs/README.md"
+changelog = "docs/CHANGELOG.md"
+repository = "https://github.com/synaptics-public/synaptics-tactile-newton"
+
+# All contact-to-signal math lives in the `synaptics_tactile_newton` python
+# package (pip-installed into Kit's python), NOT in this extension. See
+# docs/README.md.
+
+[dependencies]
+"omni.kit.uiapp" = {}
+"omni.kit.menu.utils" = {}
+"omni.usd" = {}
+"isaacsim.gui.components" = {}
+"isaacsim.physics.newton" = {}
+
+[[python.module]]
+name = "synaptics.sensors.tactile"

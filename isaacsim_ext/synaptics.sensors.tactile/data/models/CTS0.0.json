@@ -1,0 +1,16 @@
+{
+  "_comment": "Synaptics CTS 0.0 generic sensor module. Assets are resolved from the installed synaptics_tactile_newton package, not from this extension.",
+  "model": "CTS0.0",
+  "description": "Synaptics Capacitive Tactile Sensor, generic module, 52 square-grid force areas",
+  "asset": "cts0.0.usd",
+  "taxel_map": "cts0.0_taxel_map.json",
+  "sensing_shape_pattern": "*/forceArea_[0-9][0-9][0-9]",
+  "_sensing_shape_pattern_comment": "Matches the 3-digit force-area colliders only. A looser '*/forceArea_*' also catches the importer's forceArea_NNN_visual twins and silently doubles the taxel count.",
+  "num_taxels": 52,
+  "force_max_n": 100.0,
+  "_force_max_n_comment": "Per-taxel saturation force [N]. The press axis is NOT set here: it comes from the taxel map's shared axis, which overrides any sensing_axis passed to CTSSensor.",
+  "asset_units": "meters",
+  "static_mount": true,
+  "_static_mount_comment": "The baked USD carries PhysicsCollisionAPI without RigidBodyAPI, so its force areas load as static colliders. That matters: under OpenUSD < 26.5 the parallel physics parse corrupts the heap when one rigid body owns many colliders, and this module has 52. Static colliders are unaffected at any count. A rigid-body / robot-link mount needs OpenUSD >= 26.5, arriving with Newton 1.5.0.",
+  "_asset_units_comment": "The baked USD is authored in metres with metersPerUnit=1.0; spawn.py scales only for stages that are not metre-based."
+}
