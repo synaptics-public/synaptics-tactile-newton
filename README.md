@@ -6,29 +6,116 @@ Tactile Sensor (CTS)**. It turns per-contact forces computed by the
 per-taxel normal-force readout you can use directly as a robot-learning
 observation — on GPU, with no CPU round-trip.
 
-The core package is Newton-only. An **optional** Isaac Lab wrapper is provided
-for multi-environment reinforcement-learning tasks and is never pulled in by the
-core install.
+![The CTS0.0 sensor module rendered in the Newton viewer](figures/sensor_model.png)
+
+There are two parts to this repo:
+
+- **The Isaac Sim extension** (`isaacsim_ext/synaptics.sensors.tactile`) — the
+  sensor in the Isaac Sim GUI: a spawn menu, one-click demo scenes, and a live
+  per-taxel heatmap. No code to write, so it is the fastest way to see the
+  sensor work. Start at [Isaac Sim extension](#isaac-sim-extension).
+- **The Python package** (`synaptics_tactile_newton`) — the same sensor model as
+  a library, for standalone Newton simulations and robot-learning pipelines.
+  See [The Python package](#the-python-package).
+
+An **optional** Isaac Lab wrapper runs the sensor across many parallel
+reinforcement-learning environments; it is never pulled in by the core install.
 
 ---
 
-## What's in this package
+## What's in this repo
 
 ```
-synaptics_tactile_newton/        # the deliverable package
+isaacsim_ext/                    # the Isaac Sim Kit extension
+  synaptics.sensors.tactile/     #   spawn menu, live taxel panel, diagnostics
+synaptics_tactile_newton/        # the Newton Package
   sensor.py                      #   CTSSensor — the sensor model
   output.py                      #   CTSOutput — the per-taxel force bundle
   display.py                     #   format_forces / print_forces helpers
   kernels.py                     #   Warp signal-generation kernels
   isaaclab/                      #   OPTIONAL Isaac Lab wrapper (guarded import)
   assets/                        #   baked CTS USD geometry + taxel map
-isaacsim_ext/                    # OPTIONAL Isaac Sim Kit extension
-  synaptics.sensors.tactile/     #   spawn menu, live taxel panel, diagnostics
 examples/                        # standalone Newton, Isaac Lab task
 tests/                           # pytest suite
+figures/                         # images used by this README
 README.md                        # this document
 CHANGELOG.md                     # release history
 ```
+
+---
+
+## Requirements
+
+**Linux** (tested on Ubuntu 24.04), a CUDA GPU (Warp and Newton are GPU
+engines), Python 3.12. macOS and Windows are not supported.
+
+---
+
+## Isaac Sim extension
+
+`isaacsim_ext/synaptics.sensors.tactile` is a Kit extension that brings the CTS
+sensor into the Isaac Sim GUI: a `Create → Sensors` spawn menu, a one-click demo
+scene, and a live per-taxel heatmap. Every force value comes from `CTSSensor`
+(see [The Python package](#the-python-package)), so the extension can never
+drift from the model the tests cover.
+
+Requires Isaac Sim **6.0.1** started on its **Newton** experience
+(`./isaac-sim.newton.sh`); the default app disables the Newton backend and runs
+PhysX.
+
+Launch with the extension loaded straight from this repo — it finds the
+`synaptics_tactile_newton` package sitting beside `isaacsim_ext/` on its own,
+so nothing is copied or installed into Isaac Sim:
+
+```bash
+<isaac-sim>/isaac-sim.newton.sh \
+    --ext-folder /path/to/synaptics-tactile-newton/isaacsim_ext \
+    --enable synaptics.sensors.tactile
+```
+
+Or set it up once in the GUI: *Window → Extensions → ⚙ → extension search
+paths*, add `/path/to/synaptics-tactile-newton/isaacsim_ext`, enable
+**Synaptics Tactile Sensor (CTS)**, and toggle AUTOLOAD to have it on every
+start.
+
+Then `Window → Synaptics Tactile Sensor` → **Load Scenario** → **Play**.
+
+(Only if you relocate the extension away from the repo does the package need
+installing into Isaac Sim's python: `<isaac-sim>/python.sh -m pip install .`.
+`PYTHONPATH` has **no effect** — Kit's embedded Python ignores it.)
+
+Full documentation, including the diagnostics and the headless test harnesses,
+is in
+[`isaacsim_ext/synaptics.sensors.tactile/docs/README.md`](isaacsim_ext/synaptics.sensors.tactile/docs/README.md).
+
+---
+
+## The Python package
+
+The sensor model as a library — what the extension above drives, and what
+you import in a Newton simulation or a robot-learning pipeline.
+
+Install from this repo — the package is not on PyPI yet:
+
+```bash
+./setup_newton.sh                  # .venv-newton with Newton, viewers, this package
+source .venv-newton/bin/activate
+```
+
+(Into an environment you already manage: `pip install -e .[viewer,test]`.
+Extras: `viewer` = Rerun web viewer, `test` = pytest, `isaaclab` = RL wrapper —
+read [Optional: Isaac Lab integration](#optional-isaac-lab-integration) before
+using that one.)
+
+Then see the sensor work:
+
+```bash
+python examples/standalone_newton.py
+```
+
+This drops a known-mass cube onto the sensor and prints the per-taxel force
+grid, with a Rerun web viewer on port 9090 (`--no-viewer` to disable; on a
+remote host see [Examples](#examples) for port forwarding).
 
 Top-level API:
 
@@ -47,38 +134,6 @@ from synaptics_tactile_newton import CTSSensor, CTSOutput, print_forces
 
 The **baked CTS USD asset** and its **taxel map** (taxel names, centroids, press
 axis) ship inside `synaptics_tactile_newton/assets/` and travel with the wheel.
-
----
-
-## Getting started
-
-The package runs on a CUDA GPU (Warp/Newton are GPU engines) and is only tested
-on **Linux** (Ubuntu 24.04). Isaac Sim / Isaac Lab do not support macOS, and
-Windows is untested and not supported here.
-
-### Quick setup
-
-`setup_newton.sh` creates a Python 3.12 virtual environment (`.venv-newton`),
-installs Newton, the viewers, and this package in editable mode:
-
-```bash
-./setup_newton.sh
-source .venv-newton/bin/activate
-```
-
-### Manual install
-
-```bash
-pip install synaptics-tactile-newton                 # core (Newton only)
-pip install synaptics-tactile-newton[viewer]         # + Rerun web viewer
-pip install synaptics-tactile-newton[test]           # + pytest
-```
-
-Extras: `viewer` (`rerun-sdk`), `test` (`pytest`), `isaaclab` (RL wrapper). The
-`isaaclab` extra needs Isaac Lab 3.0+, which is **not on PyPI yet**, so
-`pip install synaptics-tactile-newton[isaaclab]` cannot resolve from an index
-today — install Isaac Lab from a local source checkout instead (see
-[Optional: Isaac Lab integration](#optional-isaac-lab-integration)).
 
 ### Minimal usage
 
@@ -102,85 +157,34 @@ forces = sensor.data.force.numpy()           # (num_taxels,) normal force [N]
 
 ## Optional: Isaac Lab integration
 
-The `isaaclab_*` examples and the `synaptics_tactile_newton.isaaclab` wrapper run
-the sensor across many parallel environments on the Isaac Lab **Newton backend**.
-This path is optional and has extra prerequisites — the core Newton package and
-the standalone example do **not** need any of it.
+The `isaaclab_task.py` example and the `synaptics_tactile_newton.isaaclab`
+wrapper run the sensor across many parallel environments on the Isaac Lab
+**Newton backend**. The core package and the standalone example need none of
+this.
 
-**Prerequisites (installed separately, not by `setup_newton.sh` by default):**
-
-- A local checkout of **Isaac Lab 3.0+** (the first release with the Newton
-  backend). 3.0 is not on PyPI yet, so it must be installed from source — not
-  `pip install isaaclab`.
-- A matching **Isaac Sim** with the `_isaac_sim` symlink in the Isaac Lab repo
-  (its `setup_conda_env.sh` sets `EXP_PATH`, which the launcher needs).
-
-**Install Isaac Lab into the same `.venv-newton`.** The example venv must contain
-*both* this package and Isaac Lab. The simplest way is to point `setup_newton.sh`
-at your Isaac Lab checkout:
+You need a local checkout of **Isaac Lab 3.0+** (the first release with the
+Newton backend; not on PyPI, which is also why this package's `[isaaclab]`
+extra cannot resolve from an index) with its `_isaac_sim` symlink pointing at
+a matching Isaac Sim. Then build the example environment the way the demo's
+`--help` describes — one `.venv-newton` holding this package and Isaac Lab's
+core extensions:
 
 ```bash
 ./setup_newton.sh --with-isaaclab /path/to/IsaacLab
 ```
 
-This runs the normal Newton setup, then installs the Isaac Lab `isaaclab`,
-`isaaclab_ppisp`, `isaaclab_newton`, and `isaaclab_physx` extensions editable
-into `.venv-newton`, plus `isaaclab_visualizers` so the demo's `--viz rerun` and
-`--viz newton` viewers work out of the box. Note it pulls a large dependency
-tree (PyTorch + CUDA) and may downgrade `warp-lang` / `usd-core` to the versions
-Isaac Lab pins.
-
-Already have a `.venv-newton`? Install them by hand instead:
+Already maintain an Isaac Lab environment of your own (`./isaaclab.sh -i`)?
+Installing this package into it works too — the sensor itself needs only
+`warp-lang` and `numpy`, which any Isaac Lab install already has. The example
+still runs from this repo checkout either way (it reads the sensor assets
+relative to its own location):
 
 ```bash
-source .venv-newton/bin/activate
-pip install -e /path/to/IsaacLab/source/isaaclab \
-             -e /path/to/IsaacLab/source/isaaclab_ppisp \
-             -e /path/to/IsaacLab/source/isaaclab_newton \
-             -e /path/to/IsaacLab/source/isaaclab_physx \
-             -e /path/to/IsaacLab/source/isaaclab_visualizers
-pip install PyOpenGL-accelerate      # only needed for the --viz newton window
+pip install -e "/path/to/synaptics-tactile-newton[viewer]"
 ```
 
----
-
-## Optional: Isaac Sim extension
-
-`isaacsim_ext/synaptics.sensors.tactile` is a Kit extension that brings the same
-sensor into the Isaac Sim GUI: a `Create → Sensors` spawn menu, a one-click demo
-scene, and a live per-taxel heatmap. It is a **shell over this package** — every
-force value comes from `CTSSensor`, so the extension can never drift from the
-model the tests cover.
-
-Requires Isaac Sim **6.0.1** started on its **Newton** experience
-(`./isaac-sim.newton.sh`); the default app disables the Newton backend and runs
-PhysX.
-
-**Install without copying anything into Isaac Sim.** Kit treats any folder as an
-extension search path, so point it at this repo and leave the Isaac install
-untouched:
-
-```bash
-# make this package importable inside Kit, then load the extension from here
-<isaac-sim>/isaac-sim.newton.sh \
-    --/app/python/extraPaths/0=/path/to/synaptics-tactile-newton \
-    --ext-folder /path/to/synaptics-tactile-newton/isaacsim_ext \
-    --enable synaptics.sensors.tactile
-```
-
-For a permanent install, `pip install` this package into Isaac Sim's python
-(`<isaac-sim>/python.sh -m pip install .`) and add the `isaacsim_ext` folder
-under *Window → Extensions → ⚙ → extension search paths*.
-
-> `PYTHONPATH` has **no effect** — Kit's embedded Python ignores it. Copying the
-> extension into Isaac Sim's own `exts/` folder also works but is not
-> recommended: it duplicates the code and has to be redone on every upgrade.
-
-Then `Window → Synaptics Tactile Sensor` → **Load Scenario** → **Play**.
-
-Full documentation, including the diagnostics and the headless test harnesses,
-is in
-[`isaacsim_ext/synaptics.sensors.tactile/docs/README.md`](isaacsim_ext/synaptics.sensors.tactile/docs/README.md).
+> Isaac Lab pulls a large dependency tree (PyTorch + CUDA) and may downgrade
+> `warp-lang` / `usd-core` to the versions it pins.
 
 ---
 
@@ -191,14 +195,20 @@ All of these live in `examples/`.
 | Example | What it does |
 |---|---|
 | `standalone_newton.py` | Newton-only drop test. Loads the CTS sensor, drops a known-mass cube, and prints per-taxel / total forces. Rerun web viewer on by default (`--no-viewer` to disable). The fastest way to see the sensor work. |
-| `isaaclab_task.py` | Multi-environment Isaac Lab task. Clones the sensor across environments and reads each environment's taxel forces independently — the RL-ready path. Requires Isaac Lab and a sourced Isaac Sim environment. |
-| `isaaclab_task_demo.py` | Richer, runnable Isaac Lab demo built on the box-built sensor body. Drops a selectable object (`--object cube/sphere/cylinder`, optionally off-center via `--offset_x/--offset_y`) onto the pads, prints a per-environment force summary, and optionally saves per-step artifacts (`force.npy`, `total_force.npy`, `positions_w.npy`, `readout.csv`) plus a force-field heatmap PNG. Also exposes `--force_max`, `--steps`, and `--save_dir`. |
+| `isaaclab_task.py` | Multi-environment Isaac Lab demo on the Newton backend. Clones the box-built sensor across environments and reads each environment's taxel forces independently — the RL-ready path. Drops a selectable object (`--object cube/sphere/cylinder`, optionally off-center via `--offset_x/--offset_y`) onto the pads, prints a per-environment force summary, and optionally saves per-step artifacts (`force.npy`, `total_force.npy`, `positions_w.npy`, `readout.csv`) plus a force-field heatmap PNG (`--save_dir`, `--heatmap`). Requires Isaac Lab. |
 
-Run the standalone example:
+Run the standalone example — three alternatives, the same three its `--help`
+lists:
 
 ```bash
+# default: Rerun web viewer, cube drop, prints per-taxel + total force
 python examples/standalone_newton.py
+
+# headless: no viewer, run 400 steps
 python examples/standalone_newton.py --steps 400 --no-viewer
+
+# native OpenGL viewer window: interactive camera, pause/step (needs a display)
+python examples/standalone_newton.py --gui
 ```
 
 The Rerun web viewer serves its page on port **9090** but streams the actual
@@ -214,32 +224,36 @@ ssh -L 9090:localhost:9090 -L 9876:localhost:9876 user@host
 panel if the viewer stays blank.) Prefer no live viewer at all? Record to a file
 with `--rrd out.rrd` and open it in the native Rerun desktop app.
 
-Run the Isaac Lab task with the Isaac Lab launcher (it sources Isaac Sim's
-environment, which sets `EXP_PATH`). This requires Isaac Lab installed into your
-`.venv-newton` and a sourced Isaac Sim — see
-[Optional: Isaac Lab integration](#optional-isaac-lab-integration):
+Run the Isaac Lab example through the bundled launcher — it activates
+`.venv-newton`, sets up the Isaac Sim environment, and starts the demo via
+`isaaclab.sh` (see
+[Optional: Isaac Lab integration](#optional-isaac-lab-integration) for the
+environment):
 
 ```bash
-source .venv-newton/bin/activate
-cd /path/to/IsaacLab            # must contain the _isaac_sim symlink
-./isaaclab.sh -p /path/to/examples/isaaclab_task.py --num_envs 10 --viz none
-```
-
-Run the richer demo (same launch requirements) with a selectable indenter
-and artifact/heatmap capture:
-
-```bash
-./isaaclab.sh -p /path/to/examples/isaaclab_task_demo.py \
+# live view: watch a sphere press off-center into the pads
+./run_isaaclab_demo.sh /path/to/IsaacLab \
     --num_envs 4 --object sphere --offset_x 0.004 \
-    --steps 600 --save_dir ./cts_demo_artifacts --heatmap --headless
+    --steps 600 --viz newton
+
+# artifacts: no viewer, dump per-step force/positions/CSV + a heatmap PNG
+./run_isaaclab_demo.sh /path/to/IsaacLab \
+    --num_envs 4 --object sphere --offset_x 0.004 \
+    --steps 600 --save_dir ./cts_demo_artifacts --heatmap --viz none
 ```
+
+`--object cube/sphere/cylinder` picks the indenter and `--offset_x/--offset_y`
+press it off-center; `--steps` stops after a fixed run instead of running until
+the window closes. `--viz` selects the viewer: `newton` for the native OpenGL
+window (needs a display), `rerun` for the web viewer — the same one as the
+standalone example, on the same two ports 9090 + 9876 — or `none` for headless.
 
 ---
 
 ## Testing
 
 ```bash
-pip install synaptics-tactile-newton[test]
+pip install -e .[test]
 pytest
 ```
 
@@ -316,15 +330,15 @@ This release was validated on the following stack:
 | Newton | 1.2.0 |
 | Warp (`warp-lang`) | 1.13.0 |
 | `usd-core` | 25.11 |
-| Isaac Sim (Isaac Lab example) | 6.0.0 |
+| Isaac Sim (Isaac Lab example) | 6.0.1 |
 | Isaac Sim (Kit extension) | **6.0.1**, Newton experience |
 | `isaacsim.physics.newton` (Kit extension) | 0.8.x |
-| Isaac Lab (for the Isaac Lab example) | 3.0 |
+| Isaac Lab (for the Isaac Lab example) | 3.0.0-beta2 |
 | GPU | NVIDIA RTX (CUDA) |
 
 Other versions may work but are untested. The Isaac Sim / Isaac Lab versions
-apply only to the optional integrations; the core Newton package and the
-standalone example do not need them.
+apply only to the extension and the Isaac Lab wrapper; the core Newton package
+and the standalone example do not need them.
 
 The Kit extension needs Isaac Sim **6.0** or newer, because the Newton backend
 (`isaacsim.physics.newton`) does not exist before it — 5.x is PhysX-only.

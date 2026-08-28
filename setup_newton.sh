@@ -66,12 +66,16 @@ source "${VENV_DIR}/bin/activate"
 echo "  Upgrading pip..."
 pip install --upgrade pip -q
 
-# Pin Newton to the validated version. It matches the "Tested against" stack and
-# is the version Isaac Lab pins, so warp-lang 1.13.0 satisfies both and the
-# --with-isaaclab path installs without a resolver conflict.
+# Pin Newton AND warp-lang to the validated "Tested against" stack. Newton
+# 1.2.0 leaves warp-lang unbounded, and a floating resolve picks up warp 1.16+,
+# whose codegen rejects mujoco-warp's kernels (WarpCodegenKeyError in
+# _sensor_pos) — the standalone example then crashes on startup. 1.13.0 is also
+# the version Isaac Lab pins, so the --with-isaaclab path installs without a
+# resolver conflict.
 NEWTON_VERSION="1.2.0"
-echo "  Installing newton[examples]==${NEWTON_VERSION}..."
-pip install "newton[examples]==${NEWTON_VERSION}" -q
+WARP_VERSION="1.13.0"
+echo "  Installing newton[examples]==${NEWTON_VERSION} (warp-lang==${WARP_VERSION})..."
+pip install "newton[examples]==${NEWTON_VERSION}" "warp-lang==${WARP_VERSION}" -q
 
 echo "  Installing this package (synaptics-tactile-newton) in editable mode, with the optional viewer (rerun-sdk) and test (pytest) extras..."
 pip install -e "${SCRIPT_DIR}[viewer,test]" -q
@@ -117,9 +121,12 @@ echo "Run the standalone sensor example:"
 echo "  python examples/standalone_newton.py"
 echo ""
 if [ -n "${ISAACLAB_PATH}" ]; then
+    DEMO="${SCRIPT_DIR}/examples/isaaclab_task.py"
     echo "Isaac Lab installed. Run an Isaac Lab example (from your Isaac Lab checkout):"
-    echo "  cd ${ISAACLAB_PATH} && ./isaaclab.sh -p ${SCRIPT_DIR}/examples/isaaclab_task_demo.py --viz rerun"
+    echo "  cd ${ISAACLAB_PATH} && ./isaaclab.sh -p ${DEMO} --viz rerun"
     echo "  (visualizer backends: --viz rerun | newton | none)"
+    echo "  NOTE: with Isaac Sim 6.0.1 export the Isaac Sim env vars first —"
+    echo "        see 'Examples' in the README."
     echo ""
 else
     echo "For the Isaac Lab examples, re-run with:  ./setup_newton.sh --with-isaaclab /path/to/IsaacLab"

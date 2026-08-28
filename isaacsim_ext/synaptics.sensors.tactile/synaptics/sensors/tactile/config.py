@@ -11,8 +11,10 @@ extension, the Isaac Lab wrapper and the standalone examples all read the same
 bytes.
 """
 
+import importlib.util
 import json
 import os
+import sys
 from pathlib import Path
 
 #: Model profiles, relative to the extension root.
@@ -86,6 +88,24 @@ def load_model_config(extension_root: Path | None, model_name: str) -> dict:
     config["force_max_n"] = force_max
 
     return config
+
+
+def ensure_core_package_on_path() -> None:
+    """Put a checkout's ``synaptics_tactile_newton`` on ``sys.path``.
+
+    When the extension is loaded straight from a repo checkout (``isaacsim_ext/``
+    beside ``synaptics_tactile_newton/``), this makes the core package
+    importable without a ``--/app/python/extraPaths`` launch flag — the same
+    self-contained install other Isaac Sim sensor extensions offer. No-op when
+    the package already resolves (e.g. pip-installed into Kit's python, which
+    therefore takes precedence). ``find_spec`` only locates the package; nothing
+    is imported here.
+    """
+    if importlib.util.find_spec("synaptics_tactile_newton") is not None:
+        return
+    repo_root = Path(__file__).resolve().parents[5]
+    if (repo_root / "synaptics_tactile_newton" / "__init__.py").is_file():
+        sys.path.insert(0, str(repo_root))
 
 
 def resolve_core_asset_dir() -> Path | None:

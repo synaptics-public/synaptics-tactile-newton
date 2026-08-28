@@ -82,7 +82,7 @@ def _panel():
         models=["CTS0.0"],
         on_spawn=lambda model: f"spawn callback reached for {model}",
         on_diagnostics=lambda verbose: "diagnostics callback reached",
-        on_load_scenario=lambda model: f"load-scenario callback reached for {model}",
+        on_load_scenario=lambda model, scene: f"load-scenario callback reached for {model}/{scene}",
         on_reset_scenario=lambda: "reset callback reached",
         on_read_forces=lambda: {"text": "readout reached", "sensors": [], "error": ""},
         on_warm_up=lambda: "warm-up callback reached",
@@ -98,11 +98,21 @@ def _panel():
             omni.kit.app.get_app().update()
         # These are only populated by _build_frame, so a non-None model proves
         # the layout actually built.
-        if window._model_combo is None or window._report_label is None:  # noqa: SLF001
+        if (
+            window._model_combo is None  # noqa: SLF001
+            or window._scene_combo is None  # noqa: SLF001
+            or window._report_label is None  # noqa: SLF001
+        ):
             raise RuntimeError("panel widgets were not built")
         window._diagnostics_clicked(False)  # noqa: SLF001
         window._spawn_clicked()  # noqa: SLF001
-        return "built, callbacks fire"
+        # Every scene must be selectable and loadable, since one Load button
+        # serves all of them.
+        scenes = len(window._scene_keys)  # noqa: SLF001
+        for index in range(scenes):
+            window._scene_combo.model.get_item_value_model().set_value(index)  # noqa: SLF001
+            window._load_scenario_clicked()  # noqa: SLF001
+        return f"built, callbacks fire, {scenes} scenes selectable"
     finally:
         window.destroy()
 

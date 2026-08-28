@@ -42,7 +42,7 @@ MOUNT_ROTATION = wp.quat(math.sin(_HALF), 0.0, 0.0, math.cos(_HALF))
 # Lift the sensor so it sits just above the ground plane.
 SENSOR_Z = 0.01
 
-# Viewer camera (Rerun blueprint). Same preset used by the src/ scenes.
+# Viewer camera (Rerun blueprint).
 CAMERA_POS = (0.039113, -0.074668, 0.039714)
 CAMERA_TARGET = (0.0, 0.0, 0.011259)
 CAMERA_UP = (0.018591, 0.120664, 0.992519)
@@ -127,8 +127,9 @@ def main():
     usd_path = os.path.abspath(SENSOR_USD)
     if not os.path.exists(usd_path):
         raise FileNotFoundError(
-            f"CTS sensor USD not found at {usd_path}. Run the STEP->USD pipeline "
-            "first (scripts/process_step.bash)."
+            f"CTS sensor USD not found at {usd_path}. The asset ships inside "
+            "the package under synaptics_tactile_newton/assets/ — reinstall the "
+            "package if it is missing."
         )
 
     # --- Build the scene --------------------------------------------------- #

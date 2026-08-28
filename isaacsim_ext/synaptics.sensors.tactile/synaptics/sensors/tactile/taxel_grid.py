@@ -38,6 +38,14 @@ _RAMP = (
 _SATURATED_RGB = (255, 80, 235)
 _EMPTY_RGB = (22, 22, 26)
 
+#: Fixed tooltip palette. The default tooltip hugs the hovered cell, and with a
+#: theme-dependent (often translucent) background the ramp colour underneath
+#: decides how readable it is. Building the tooltip on an explicit opaque plate
+#: with a fixed text colour makes the readout identical over every cell.
+_TOOLTIP_BG_RGB = (28, 28, 32)
+_TOOLTIP_BORDER_RGB = (90, 90, 100)
+_TOOLTIP_TEXT_RGB = (235, 235, 240)
+
 #: Cell edge in pixels, clamped so the grid stays usable in a narrow panel and
 #: does not swallow a wide one.
 MIN_CELL = 8
@@ -85,6 +93,7 @@ class TaxelGrid:
         self._cell_px = DEFAULT_CELL
         self._dropped = 0
         self._caption = None
+        self._latest_forces = None  # last update()'s forces, for hover tooltips
 
     # ------------------------------------------------------------------ #
     # Build
@@ -118,7 +127,9 @@ class TaxelGrid:
                         rect = ui.Rectangle(
                             height=cell,
                             style={"background_color": _abgr(_EMPTY_RGB)},
-                            tooltip=label or f"taxel {index}",
+                        )
+                        rect.set_tooltip_fn(
+                            self._tooltip_builder(index, label or f"taxel {index}")
                         )
                         self._cells[index] = rect
             self._caption = ui.Label("", height=0)
@@ -132,6 +143,41 @@ class TaxelGrid:
                 f"two centroids landed in the same grid cell."
             )
             self._dropped = dropped
+
+    def _tooltip_builder(self, index: int, name: str):
+        """Tooltip content for one cell: the taxel name plus its current force.
+
+        Built lazily each time the tooltip pops, so it reads the forces of the
+        latest ``update()`` rather than a string frozen at build time.
+        """
+
+        def build_tooltip():
+            forces = self._latest_forces
+            reading = (
+                f"{float(forces[index]):.4f} N"
+                if forces is not None and index < len(forces)
+                else "no reading"
+            )
+            with ui.ZStack():
+                ui.Rectangle(
+                    style={
+                        "background_color": _abgr(_TOOLTIP_BG_RGB),
+                        "border_color": _abgr(_TOOLTIP_BORDER_RGB),
+                        "border_width": 1,
+                        "border_radius": 3,
+                    }
+                )
+                with ui.VStack(spacing=2, style={"margin": 7}):
+                    ui.Label(
+                        name,
+                        style={"color": _abgr(_TOOLTIP_TEXT_RGB), "font_size": 13},
+                    )
+                    ui.Label(
+                        reading,
+                        style={"color": _abgr(_TOOLTIP_TEXT_RGB), "font_size": 15},
+                    )
+
+        return build_tooltip
 
     def matches(self, centroids) -> bool:
         """True when an existing layout already fits these centroids."""
@@ -154,10 +200,18 @@ class TaxelGrid:
     # Update
     # ------------------------------------------------------------------ #
 
-    def update(self, forces, force_max: float) -> dict:
-        """Recolour every cell. Returns the stats the panel reports."""
+    def update(self, forces, force_max: float, fixed_scale: float | None = None) -> dict:
+        """Recolour every cell. Returns the stats the panel reports.
+
+        ``fixed_scale`` pins the colour scale instead of auto-ranging to the
+        frame's peak. Auto-ranging makes two objects impossible to compare in
+        one shot: one impact spiking to 4 N rescales the whole grid, and an
+        object still pressing at 0.14 N next to it renders black. Cells above a
+        fixed scale simply clamp to the top of the ramp.
+        """
+        self._latest_forces = np.asarray(forces, dtype=np.float64).copy()
         peak = float(forces.max()) if len(forces) else 0.0
-        scale = max(peak, MIN_SCALE_N)
+        scale = float(fixed_scale) if fixed_scale else max(peak, MIN_SCALE_N)
         saturated = (
             int((forces >= force_max * SATURATION_FRACTION).sum()) if force_max > 0.0 else 0
         )
@@ -171,7 +225,9 @@ class TaxelGrid:
 
         if self._caption is not None:
             self._caption.text = (
-                f"colour scale 0 – {scale:.4f} N   |   peak {peak:.4f} N"
+                f"colour scale 0 – {scale:.4f} N"
+                + (" (fixed)" if fixed_scale else "")
+                + f"   |   peak {peak:.4f} N"
                 + (f"   |   SATURATED: {saturated} taxel(s)" if saturated else "")
                 + (f"   |   {self._dropped} taxel(s) not shown" if self._dropped else "")
             )
@@ -211,6 +267,7 @@ class TaxelGrid:
         return True
 
     def clear(self) -> None:
+        self._latest_forces = None
         for rect in self._cells.values():
             rect.set_style({"background_color": _abgr(_EMPTY_RGB)})
         if self._caption is not None:
@@ -222,3 +279,4 @@ class TaxelGrid:
         self._spacers = []
         self._caption = None
         self._layout = None
+        self._latest_forces = None

@@ -65,14 +65,27 @@ parser = argparse.ArgumentParser(
 )
 parser.add_argument("--num_envs", type=int, default=4, help="Number of environments.")
 parser.add_argument(
+    "--env_spacing",
+    type=float,
+    default=0.06,
+    help="Grid spacing between environment origins [m] (the sensor is ~30 mm wide, "
+    "so 0.06 places the sensors about two sensor widths apart).",
+)
+parser.add_argument(
     "--object",
     choices=("cube", "sphere", "cylinder"),
-    default="cube",
+    default="sphere",
     help="Indenter shape dropped onto the pads.",
 )
 parser.add_argument("--offset_x", type=float, default=0.0, help="Lateral press offset X [m].")
 parser.add_argument("--offset_y", type=float, default=0.0, help="Lateral press offset Y [m].")
 parser.add_argument("--force_max", type=float, default=100.0, help="Per-taxel force saturation [N].")
+parser.add_argument(
+    "--highlight_pads",
+    action="store_true",
+    help="Tint the force areas blue instead of drawing the sensor in its USD colours "
+    "(the asset paints pads and housing the same grey, so they are hard to tell apart).",
+)
 parser.add_argument(
     "--steps",
     type=int,
@@ -169,8 +182,8 @@ DROP_Z = 0.05
 # attached to the visualizer cfg in ``_viewer_cfgs``. ``lookat`` is a point along
 # the view direction; the 65 deg FOV is the default focal length, so it is not
 # set here.
-VIEWER_EYE = (0.40, -0.57, 0.21)
-VIEWER_LOOKAT = (-0.087, -0.060, 0.033)
+VIEWER_EYE = (0.04, -0.08, 0.05)
+VIEWER_LOOKAT = (-0.019, -0.010, 0.010)
 
 # Slower interactive navigation for the Newton GL viewer (its defaults feel too
 # fast at this scene scale). The GL viewer exposes these only as instance
@@ -193,6 +206,17 @@ RERUN_PULLBACK = 1.5
 DEFAULT_CONTACT_KE = 250000.0
 DEFAULT_CONTACT_KD = 1000.0
 
+# Colours used with ``--highlight_pads``: the sensor is rebuilt shape by shape in
+# Newton, so the viewer draws whatever colour each shape is added with. The USD
+# colours (read per prim below) are the default; these make the force areas stand
+# out against the housing.
+HIGHLIGHT_FORCE_AREA_COLOR = (0.2, 0.6, 1.0)
+HIGHLIGHT_STRUCTURE_COLOR = (0.55, 0.55, 0.6)
+
+# Fallback colour for a prim that authors neither a display colour nor a bound
+# material with a diffuse colour.
+DEFAULT_SHAPE_COLOR = (0.5, 0.5, 0.5)
+
 # Populated once in ``main()`` before the scene is cloned; read by the per-world
 # builder hook. Each entry is a per-shape dict from ``load_force_area_shapes``
 # (box / convex hull / mesh, in METERS in the sensor body-local frame).
@@ -202,6 +226,24 @@ _SENSOR_SHAPES: list = []
 # in ``main()`` alongside ``_SENSOR_SHAPES`` and added to the same body as real
 # colliding triangle meshes, so the whole sensor collides, not just the pads.
 _SENSOR_STRUCTURE: list = []
+
+
+def _usd_shape_color(prim):
+    """Colour authored for ``prim``: its display colour, else the diffuse colour of
+    its bound material, else :data:`DEFAULT_SHAPE_COLOR`."""
+    from pxr import UsdGeom, UsdShade  # noqa: PLC0415
+
+    display = UsdGeom.Gprim(prim).GetDisplayColorAttr().Get()
+    if display:
+        return tuple(float(c) for c in display[0])
+    material = UsdShade.MaterialBindingAPI(prim).ComputeBoundMaterial()[0]
+    if material:
+        shader = material.ComputeSurfaceSource()[0]
+        diffuse = shader.GetInput("diffuseColor") if shader else None
+        value = diffuse.Get() if diffuse else None
+        if value is not None:
+            return tuple(float(c) for c in value)
+    return DEFAULT_SHAPE_COLOR
 
 
 def load_force_area_shapes(usd_path):
@@ -266,6 +308,7 @@ def load_force_area_shapes(usd_path):
                     "kind": "mesh" if approx == "none" else "hull",
                     "ke": ke,
                     "kd": kd,
+                    "color": _usd_shape_color(p),
                     "vertices": verts.astype(np.float32),
                     "indices": np.array(tris, dtype=np.int32),
                 }
@@ -280,6 +323,7 @@ def load_force_area_shapes(usd_path):
                     "kind": "box",
                     "ke": ke,
                     "kd": kd,
+                    "color": _usd_shape_color(p),
                     "center": 0.5 * (mn + mx),
                     "half": np.maximum(0.5 * (mx - mn), 1e-6),
                 }
@@ -343,6 +387,7 @@ def load_structure_meshes(usd_path):
                 "name": p.GetName(),
                 "ke": DEFAULT_CONTACT_KE,
                 "kd": DEFAULT_CONTACT_KD,
+                "color": _usd_shape_color(p),
                 "vertices": verts.astype(np.float32),
                 "indices": np.array(tris, dtype=np.int32),
             }
@@ -355,10 +400,9 @@ def _add_structure_shape(builder, body, shape, label):
     cfg = newton.ModelBuilder.ShapeConfig()
     cfg.ke = shape["ke"]
     cfg.kd = shape["kd"]
+    color = HIGHLIGHT_STRUCTURE_COLOR if args_cli.highlight_pads else shape["color"]
     mesh = newton.Mesh(shape["vertices"], shape["indices"], compute_inertia=False)
-    builder.add_shape_mesh(
-        body=body, mesh=mesh, cfg=cfg, color=(0.55, 0.55, 0.6), label=label
-    )
+    builder.add_shape_mesh(body=body, mesh=mesh, cfg=cfg, color=color, label=label)
 
 
 def _add_force_area_shape(builder, body, shape, label):
@@ -370,7 +414,7 @@ def _add_force_area_shape(builder, body, shape, label):
     cfg = newton.ModelBuilder.ShapeConfig()
     cfg.ke = shape["ke"]
     cfg.kd = shape["kd"]
-    color = (0.2, 0.6, 1.0)
+    color = HIGHLIGHT_FORCE_AREA_COLOR if args_cli.highlight_pads else shape["color"]
     if shape["kind"] == "box":
         center = shape["center"]
         half = shape["half"]
@@ -747,7 +791,7 @@ def main():
     sim = sim_utils.SimulationContext(sim_cfg)
     sim.set_camera_view(eye=list(VIEWER_EYE), target=list(VIEWER_LOOKAT))
 
-    scene_cfg = TactileSensorSceneCfg(num_envs=args_cli.num_envs, env_spacing=0.5)
+    scene_cfg = TactileSensorSceneCfg(num_envs=args_cli.num_envs, env_spacing=args_cli.env_spacing)
     scene = InteractiveScene(scene_cfg)
 
     sim.reset()

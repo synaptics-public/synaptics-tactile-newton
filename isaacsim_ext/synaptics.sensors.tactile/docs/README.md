@@ -21,36 +21,30 @@ Isaac Sim and keeps a Kit version bump from touching sensor behaviour.
 
 ## Install
 
-1. **Install the core package into Isaac Sim's python** — this is where the
-   sensor model and the baked assets come from:
-
-   ```bash
-   cd <isaac-sim-root>
-   ./python.sh -m pip install synaptics-tactile-newton
-   ```
-
-   For development against a source checkout, put the repo on Kit's python path
-   at launch instead:
-
-   ```bash
-   --/app/python/extraPaths/0=/path/to/synaptics-tactile-newton
-   ```
-
-   **`PYTHONPATH` has no effect** — Kit's embedded Python ignores it. Launching
-   from the repo root happens to work (the working directory lands on
-   `sys.path`), but don't rely on that. `SYNAPTICS_TACTILE_ASSET_DIR` resolves
-   the *assets* alone, which is not enough: the sensor model itself is imported
-   from this package.
-
-2. **Add this folder to Kit's extension search paths.** Either
+1. **Add this folder to Kit's extension search paths.** Either
    *Window → Extensions → ⚙ → add the folder that contains
    `synaptics.sensors.tactile`*, or pass it at launch:
 
    ```bash
-   --ext-folder /path/to/isaacsim_ext --enable synaptics.sensors.tactile
+   --ext-folder /path/to/synaptics-tactile-newton/isaacsim_ext --enable synaptics.sensors.tactile
    ```
 
-3. **Launch the Newton experience.** Isaac Sim's default app runs PhysX and
+   Loaded from a repo checkout, the extension puts the repo root on Kit's
+   python path itself, so the core `synaptics_tactile_newton` package — the
+   sensor model and the baked assets — resolves with no further setup. Only if
+   the extension folder lives away from the repo, install the core package
+   into Isaac Sim's python instead:
+
+   ```bash
+   cd <isaac-sim-root>
+   ./python.sh -m pip install /path/to/synaptics-tactile-newton
+   ```
+
+   **`PYTHONPATH` has no effect** — Kit's embedded Python ignores it.
+   `SYNAPTICS_TACTILE_ASSET_DIR` resolves the *assets* alone, which is not
+   enough: the sensor model itself is imported from this package.
+
+2. **Launch the Newton experience.** Isaac Sim's default app runs PhysX and
    disables the Newton backend, so start Isaac Sim with:
 
    ```bash
@@ -68,10 +62,56 @@ Isaac Sim and keeps a Kit version bump from touching sensor behaviour.
   spawned sensor survives saving and reloading the stage.
 * **`Window → Synaptics Tactile Sensor`** opens the panel. **`Load Scenario`**
   is the fastest way in: it builds a complete, correct scene — ground, light,
-  the sensor mounted pads-up, a 50 g / 10 mm indenter above it, and a camera
+  the sensor mounted pads-up, one or more indenters above it, and a camera
   that can actually resolve a 4 mm part — then you press **Play**. `Reset`
-  stops the timeline and returns the indenter to its drop height, ready for
+  stops the timeline and returns the indenters to their drop heights, ready for
   another Play.
+* **The `Scene` dropdown** picks what `Load Scenario` builds:
+
+  | Scene | What it does |
+  |---|---|
+  | `Two cubes, staggered` (default) | Two 50 g / 6 mm cubes onto opposite ends of the array. Released together, but the blue one falls from twice the height and lands ~35 ms later. |
+  | `Two larger cubes, staggered` | The same shot with 100 g / 8 mm cubes, for a heavier reading. |
+  | `Rolling sphere (diagonal)` | A 50 g / 8 mm sphere rolls down a ramp set 18° off the long axis, so its patch crosses the array corner to corner — moving in **both** u and v rather than straight down the middle row. |
+  | `Rolling cylinder` | A 50 g / 8 mm × 12 mm cylinder rolls the length of the array, its axis square to its travel. Presses a **line** across the full width instead of a point: the shot that shows the sensor resolving what orientation something has, not just where it is. |
+  | `Wire drop (awkward angle)` | A 2 mm × 20 mm rigid wire dropped tilted, its axis 18° off the long axis. One end strikes first, then the rest slaps down — a point that grows into a diagonal line, settling at *m·g*. |
+
+  The measurement scene is no longer in the dropdown: one 50 g cube sitting
+  still makes a poor demo, but it is the only scene whose reading is verifiable
+  (Σ taxel force settles at *m·g* = 0.4905 N), so it survives as `single_drop`
+  for the headless harnesses, which still build it as their default.
+
+  The presentation scenes play at **8× slow motion**. The whole drop is over
+  in about a tenth of a second at real speed, so at 60 fps it is a blink — which
+  is also why they are no use as measurements. The staggered scenes do settle
+  at 2·*m·g*, but only because they tune
+  two things Isaac Sim's defaults get wrong for it: a stiffer
+  `newton:contact_kd` on the cubes (holding 50 g in a 6 mm box makes them
+  ~230,000 kg/m³, and at the default softness the higher cube sinks into the pads
+  on impact and is thrown clear off the sensor), and a wider contact buffer
+  (`nconmax = 512`; the default 200 overflows at ~330 contacts, which is logged
+  but not raised, and the dropped contacts read as missing force). That is a
+  tuned demo, not a measurement. The wire is denser still for its contact area,
+  so it reuses the cubes' `contact_kd`.
+
+  **The array is not a rectangle.** Its two outer rows (v = −4.82 and +5.19 mm)
+  carry 8 taxels against the middle rows' 12, so the corners are chamfered and
+  hold no taxels at all. A diagonal run therefore enters the sensing area at
+  about u = −8.6 mm rather than −14.75, and covers less of the long axis than a
+  straight one does — it trades length for crossing all five rows. That is why
+  `kit_demo_scenes.py` judges the sphere by distance along its path rather than
+  by u alone; measuring u would fail a run that is doing exactly what it should.
+
+  The sphere scene needs a third: `newton:contact_ke = 2.5e5` on the ball, the
+  same stiffness every collider in `cts0.0.usd` carries. Newton's importer
+  defaults an indenter to `2.5e3`, and because MuJoCo mixes the pair's `solref`
+  a default-soft ball halves the stiffness of every pad contact it makes. A
+  resting object does not care — the contact still balances its weight — but a
+  rolling one sinks ~0.13 mm into a dimple it has to climb out of continuously,
+  and the damping in that contact bleeds off its energy: 0.24 m/s² of drag,
+  which stopped the ball 8 mm short of the array edge and left it rocking in
+  place. Note that this is *contact* stiffness, not the ball's own; the collider
+  Newton builds from a `UsdGeomSphere` is analytic, never a faceted mesh.
 * **The per-taxel heatmap** refreshes on its own (~10 Hz) once the timeline is
   playing — one cell per force area, laid out from the taxel map, coloured by
   force. The scale **auto-ranges to the current frame's peak** and prints its
@@ -79,7 +119,7 @@ Isaac Sim and keeps a Kit version bump from touching sensor behaviour.
   every cell black. Cells at the model's saturation limit are drawn in magenta
   and called out in the headline, so a clamped reading never passes for a
   correct one. Above the grid: the sensor path, summed force, net |F| and the
-  step count — for the shipped scenario the sum settles at ~0.49 N.
+  step count — a settled 50 g object reads ~0.49 N there.
 * **`Play 1` → `Step 1` / `Step 5`** walk through a contact event a physics step
   at a time. `Play 1` starts a stopped simulation and pauses after one step, so
   you are immediately ready to Step; `Step N` then advances exactly N steps.
@@ -130,7 +170,6 @@ ISAAC=<isaac-sim-root>
 REPO=<this-repo>
 $ISAAC/kit/kit $ISAAC/apps/isaacsim.exp.base.kit \
     --no-window \
-    --/app/python/extraPaths/0=$REPO \
     --enable isaacsim.physics.newton \
     --enable isaacsim.physics.newton.tensors \
     --ext-folder $REPO/isaacsim_ext \
@@ -154,6 +193,7 @@ Swap the `--exec` script for any of the others; they all run the same way:
 | `kit_scenario_test.py` | the demo scene reaches a state the sensor can bind to | yes |
 | `kit_dead_weight.py` | drop a known mass, Σ taxel force ≈ *m·g* | yes |
 | `kit_robustness.py` | full-array press; two sensors on one stage | yes |
+| `kit_demo_scenes.py` | the presentation scenes land where intended, and play at the rate they ask for | yes |
 
 The ones that mutate the stage replace it outright, so run them in a throwaway
 session.
@@ -193,9 +233,23 @@ the array therefore rests on the base, which carries the load, and the taxels
 register almost nothing: a 30 × 15 mm press reads 3/52 taxels and ~3 % of the
 weight. Sized to the array (26 × 11 mm) it reads 47/52 and ~83 %.
 
+That missing ~17 % is the base, not a measurement fault: summing the vertical
+reaction on every sensor shape accounts for the weight exactly — 0.4103 N on the
+taxels plus 0.0802 N on `force_base` is 0.4905 N, precisely *m·g*, with nothing
+on the holder or connectors. The split is unchanged whether or not the contact
+buffer overflows.
+
 Keep calibration presses and whole-pad demos **inside the taxel array**. On real
 hardware a rubber pad sits proud of the base, so this is an asset-fidelity gap
 rather than a physical one.
+
+**Do not raise `nconmax` past ~768.** Widening MuJoCo's contact buffer is the
+right fix for `Number of Newton contacts (N) exceeded MJWarp limit`, and the
+demo scenes ask for 512. But at **1024** every contact force reads zero: the
+physics stays correct — objects rest exactly where they should — while the
+entire force readout dies silently, with the runtime still bound and reporting
+no error. Raising `njmax` alongside does not help. Measured working: 200, 512,
+640, 768.
 
 ## Layout
 
@@ -213,4 +267,5 @@ synaptics/sensors/tactile/
   adapters/                     everything version-specific about the Newton backend
 scripts/kit_diagnostics.py      headless preflight, run inside Kit via --exec
 scripts/kit_smoke.py            headless spawn + panel smoke test (mutates the stage)
+scripts/kit_demo_scenes.py      headless check on the presentation scenes (mutates the stage)
 ```

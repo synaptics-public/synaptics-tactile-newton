@@ -12,10 +12,16 @@ from omni.kit.menu.utils import MenuItemDescription
 from pxr import UsdPhysics
 
 from .adapters import get_newton_adapter
-from .config import available_models, resolve_extension_root
+from .config import available_models, ensure_core_package_on_path, resolve_extension_root
 from .diagnostics import format_diagnostics, run_diagnostics
 from .runtime import TactileRuntime, set_active_runtime
-from .scenario import PHYSICS_RATE_HZ, build_scenario, reset_simulation
+from .scenario import (
+    DEFAULT_SCENE,
+    DEFAULT_TIME_CODES_PER_SECOND,
+    PHYSICS_RATE_HZ,
+    build_scenario,
+    reset_simulation,
+)
 from .spawn import spawn_sensor
 from .ui_builder import WINDOW_TITLE, TactileSensorWindow
 
@@ -35,6 +41,10 @@ class SynapticsTactileSensorExtension(omni.ext.IExt):
     """
 
     def on_startup(self, extension_id: str) -> None:
+        # A repo checkout carries the core package beside isaacsim_ext/; make it
+        # importable before anything lazily imports CTSSensor.
+        ensure_core_package_on_path()
+
         self._extension_root = None
         self._menu_items = []
         self._window_menu_items = []
@@ -175,7 +185,7 @@ class SynapticsTactileSensorExtension(omni.ext.IExt):
         carb.log_info(f"{_LOG_PREFIX} {message}")
         return message
 
-    def _load_scenario(self, model_name: str) -> str:
+    def _load_scenario(self, model_name: str, scene: str = DEFAULT_SCENE) -> str:
         """Build the whole demo scene in one action. Returns a status line."""
         stage = omni.usd.get_context().get_stage()
         if stage is None:
@@ -187,18 +197,37 @@ class SynapticsTactileSensorExtension(omni.ext.IExt):
         omni.timeline.get_timeline_interface().stop()
 
         try:
-            info = build_scenario(stage, model_name, extension_root=self._extension_root)
+            info = build_scenario(
+                stage, model_name, extension_root=self._extension_root, scene=scene
+            )
         except (FileNotFoundError, ValueError) as error:
             carb.log_error(f"{_LOG_PREFIX} {error}")
             return str(error)
 
-        message = (
-            f"Loaded {model_name} scenario: {info['num_taxels']} taxels, "
-            f"{info['indenter_mass_kg'] * 1000:.0f} g indenter "
-            f"(settles at ~{info['expected_total_force_n']:.3f} N). Press Play.\n"
+        count = len(info["indenter_paths"])
+        lines = [
+            f"Loaded {model_name} / {info['scene_label']}: {info['num_taxels']} taxels, "
+            f"{count} indenter{'' if count == 1 else 's'} totalling "
+            f"{info['indenter_mass_kg'] * 1000:.0f} g "
+            f"(settles at ~{info['expected_total_force_n']:.3f} N). Press Play."
+        ]
+        slow_motion = DEFAULT_TIME_CODES_PER_SECOND / info["time_codes_per_second"]
+        if slow_motion < 1.0:
+            lines.append(
+                f"Playback is {1.0 / slow_motion:.0f}x slow motion "
+                f"({info['time_codes_per_second']:.0f} fps of sim time) — the drop "
+                "is over in a tenth of a second at real speed."
+            )
+        if info["overhanging"]:
+            lines.append(
+                f"Warning: {', '.join(info['overhanging'])} overhangs the taxel array, "
+                "so the coplanar base will carry most of the load."
+            )
+        lines.append(
             "First Play of a session pauses ~30 s while Warp compiles the MuJoCo "
             "contact kernels — it is not hung, and the compile is cached after that."
         )
+        message = "\n".join(lines)
         carb.log_info(f"{_LOG_PREFIX} {message}")
         return message
 
@@ -207,7 +236,7 @@ class SynapticsTactileSensorExtension(omni.ext.IExt):
         if stage is None:
             return "No stage is open."
         if reset_simulation(stage):
-            return "Reset: timeline stopped, indenter back at its drop height. Press Play."
+            return "Reset: timeline stopped, indenters back at their drop heights. Press Play."
         return "No scenario on this stage — press Load Scenario first."
 
     def _runtime_readout(self) -> dict:

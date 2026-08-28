@@ -70,6 +70,22 @@ class NewtonBackendAdapter:
         """The backend's physics interface, or None before it is constructed."""
         return self.backend().acquire_physics_interface()
 
+    def set_contact_buffer_size(self, nconmax: int) -> None:
+        """Raise ``nconmax`` on the backend's solver config.
+
+        Isaac Sim owns the solver, so this is the only way to widen the buffer;
+        Newton's own ``SolverMuJoCo(nconmax=...)`` argument is never ours to
+        pass. The solver reads it when it is constructed, which is why this has
+        to happen before Play — setting it on the PLAY event is too late.
+
+        Never lowers an existing value: a bigger buffer elsewhere on the stage
+        is someone else's requirement, and shrinking it would clip their
+        contacts.
+        """
+        solver_cfg = getattr(getattr(self.newton_stage(), "cfg", None), "solver_cfg", None)
+        if solver_cfg is not None and nconmax > (getattr(solver_cfg, "nconmax", None) or 0):
+            solver_cfg.nconmax = int(nconmax)
+
     def active_physics_engine(self) -> str:
         """Name of the engine actually driving the stage ("newton", "physx", ...)."""
         return self.backend().get_active_physics_engine()

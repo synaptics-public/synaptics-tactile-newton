@@ -99,6 +99,9 @@ class TactileRuntime:
                 self._on_timeline_event, name="synaptics.tactile.timeline"
             )
         )
+        # A scenario may already be on the stage — reloaded extension, reopened
+        # file — in which case nothing has asked for its contact buffer yet.
+        self._apply_scene_solver_config()
 
     def stop(self) -> None:
         """Drop every subscription and binding. Safe to call twice."""
@@ -146,9 +149,27 @@ class TactileRuntime:
         # of steps and hide exactly the detail someone stepping is looking for.
         if not self._bindings:
             self._steps = 0
-        # The model does not exist yet — Newton builds it inside the first
-        # step. Subscribe now and bind on the first step that has one.
         self._subscribe_step()
+
+    def _apply_scene_solver_config(self) -> None:
+        """Ask for the already-loaded scene's contact buffer, if there is one.
+
+        ``build_scenario`` does this for the scenario it builds, which covers
+        Load Scenario. This covers the other way in: a scenario already on the
+        stage when the extension starts. Without it the solver is built with
+        Isaac Sim's default 200 and silently drops contacts past that.
+
+        It cannot move to the PLAY event — measured, the solver already exists
+        by then and keeps the buffer it was constructed with.
+        """
+        import omni.usd
+
+        from .scenario import SCENES, active_scene, set_contact_buffer
+
+        stage = omni.usd.get_context().get_stage()
+        scene = active_scene(stage) if stage is not None else None
+        if scene is not None and SCENES[scene].nconmax:
+            set_contact_buffer(SCENES[scene].nconmax)
 
     def _on_stop(self) -> None:
         self._unbind()
@@ -235,8 +256,8 @@ class TactileRuntime:
         except ImportError as error:
             self._last_error = (
                 f"synaptics_tactile_newton is not importable inside Kit ({error}). "
-                "Install it into Isaac Sim's python, or launch with "
-                "--/app/python/extraPaths/0=<repo>."
+                "Load the extension from a full repo checkout (the package sits "
+                "beside isaacsim_ext/), or install it into Isaac Sim's python."
             )
             carb.log_error(f"{_LOG_PREFIX} {self._last_error}")
             return False

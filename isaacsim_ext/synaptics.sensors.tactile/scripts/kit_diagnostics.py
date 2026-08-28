@@ -15,7 +15,6 @@ answer any of these questions::
     EXT=isaacsim_ext/synaptics.sensors.tactile
     $ISAAC/kit/kit $ISAAC/apps/isaacsim.exp.base.kit \\
         --no-window \\
-        --/app/python/extraPaths/0=$PWD \\
         --enable isaacsim.physics.newton \\
         --enable isaacsim.physics.newton.tensors \\
         --ext-folder isaacsim_ext \\
@@ -26,6 +25,9 @@ Notes on the invocation:
 
 * ``--ext-folder`` must point at ``isaacsim_ext`` itself — Kit treats every
   subdirectory of a search path as an extension.
+* No ``--/app/python/extraPaths`` flag is needed: on startup the extension puts
+  the repo root (which carries ``synaptics_tactile_newton``) on Kit's python
+  path itself.
 * ``--enable isaacsim.physics.newton`` is what the GUI's
   ``isaac-sim.newton.sh`` does via its own experience file; the *default* full
   app disables the Newton backend and runs PhysX.

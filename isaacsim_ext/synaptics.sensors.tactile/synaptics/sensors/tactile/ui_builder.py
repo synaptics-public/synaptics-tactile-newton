@@ -14,6 +14,7 @@ import omni.kit.app
 import omni.ui as ui
 
 from .config import DEFAULT_FORCE_MAX_N
+from .scenario import SCENES, scene_keys, scene_labels
 from .taxel_grid import TaxelGrid
 
 WINDOW_TITLE = "Synaptics Tactile Sensor"
@@ -46,8 +47,8 @@ class TactileSensorWindow:
             on_spawn: ``callable(model_name) -> str`` returning a status line.
             on_diagnostics: ``callable(verbose: bool) -> str`` returning the
                 formatted preflight report.
-            on_load_scenario: ``callable(model_name) -> str`` building the demo
-                scene.
+            on_load_scenario: ``callable(model_name, scene_key) -> str`` building
+                the demo scene.
             on_reset_scenario: ``callable() -> str`` resetting the scene.
             on_read_forces: ``callable() -> dict`` — the runtime readout (see
                 ``TactileRuntime.readout``).
@@ -69,10 +70,13 @@ class TactileSensorWindow:
         self._status_text = ""
         self._headline_text = "No sensor bound."
         self._model_combo = None
+        self._scene_combo = None
+        self._scene_hint_label = None
         self._report_label = None
         self._status_label = None
         self._headline_label = None
 
+        self._scene_keys = scene_keys()
         self._grid = TaxelGrid()
         self._grid_frame = None
         self._pending_centroids = None
@@ -120,6 +124,8 @@ class TactileSensorWindow:
             self._grid_frame.set_build_fn(None)
             self._grid_frame = None
         self._model_combo = None
+        self._scene_combo = None
+        self._scene_hint_label = None
         self._report_label = None
         self._status_label = None
         self._headline_label = None
@@ -161,15 +167,25 @@ class TactileSensorWindow:
                 with ui.HStack(height=26, spacing=6):
                     ui.Label("Model", width=60)
                     self._model_combo = ui.ComboBox(0, *self._models)
+                # One Load button for N scenes, rather than a button per scene:
+                # the list is expected to grow.
+                with ui.HStack(height=26, spacing=6):
+                    ui.Label("Scene", width=60)
+                    self._scene_combo = ui.ComboBox(0, *scene_labels())
+                    self._scene_combo.model.add_item_changed_fn(self._scene_changed)
+                self._scene_hint_label = ui.Label(
+                    SCENES[self._scene_keys[0]].description, word_wrap=True, height=0
+                )
                 # Scene setup, then transport. Transport reads left to right in the
                 # order you use it: start, step, step further, start over.
                 with ui.HStack(height=30, spacing=6):
                     ui.Button(
                         "Load Scenario",
                         clicked_fn=self._load_scenario_clicked,
-                        tooltip="Build the complete demo scene: ground, light, the "
-                                "sensor mounted pads-up, a 50 g indenter above it, "
-                                "and a camera that can actually see a 4 mm part.",
+                        tooltip="Build the complete demo scene for the selected "
+                                "Scene: ground, light, the sensor mounted pads-up, "
+                                "the indenters above it, and a camera that can "
+                                "actually see a 4 mm part.",
                     )
                     ui.Button(
                         "Warm up kernels",
@@ -284,7 +300,11 @@ class TactileSensorWindow:
                 self._grid_frame.rebuild()
             return
 
-        stats = self._grid.update(forces, sensor.get("force_max", DEFAULT_FORCE_MAX_N))
+        stats = self._grid.update(
+            forces,
+            sensor.get("force_max", DEFAULT_FORCE_MAX_N),
+            fixed_scale=self._scene_force_scale(),
+        )
         others = len(sensors) - 1
         self._set_headline(
             f"{sensor['prim_path']}   |   Σ {float(forces.sum()):.4f} N over "
@@ -304,11 +324,39 @@ class TactileSensorWindow:
         index = self._model_combo.model.get_item_value_model().get_value_as_int()
         return self._models[max(0, min(index, len(self._models) - 1))]
 
+    def _scene_force_scale(self):
+        """Fixed heatmap scale of the scene on the stage, or None to auto-range.
+
+        Read from the stage rather than the dropdown: what is loaded is what is
+        being played, and the two differ the moment someone changes the
+        selection without pressing Load Scenario.
+        """
+        try:
+            import omni.usd
+
+            from .scenario import active_scene
+        except ImportError:
+            return None
+        stage = omni.usd.get_context().get_stage()
+        scene = active_scene(stage) if stage is not None else None
+        return SCENES[scene].force_scale_n if scene is not None else None
+
+    def _selected_scene(self) -> str:
+        if self._scene_combo is None:
+            return self._scene_keys[0]
+        index = self._scene_combo.model.get_item_value_model().get_value_as_int()
+        return self._scene_keys[max(0, min(index, len(self._scene_keys) - 1))]
+
+    def _scene_changed(self, *_args) -> None:
+        """Show the selected scene's description without building anything."""
+        if self._scene_hint_label is not None:
+            self._scene_hint_label.text = SCENES[self._selected_scene()].description
+
     def _spawn_clicked(self) -> None:
         self._set_status(self._on_spawn(self._selected_model()))
 
     def _load_scenario_clicked(self) -> None:
-        self._set_status(self._on_load_scenario(self._selected_model()))
+        self._set_status(self._on_load_scenario(self._selected_model(), self._selected_scene()))
 
     def _play_one_clicked(self) -> None:
         self._set_status(self._on_play_one())

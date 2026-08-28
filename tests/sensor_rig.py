@@ -162,8 +162,9 @@ class SensorRig:
         usd_path = Path(config.sensor_usd).resolve()
         if not usd_path.exists():
             raise FileNotFoundError(
-                f"CTS sensor USD not found at {usd_path}. Run the STEP->USD "
-                "pipeline first (scripts/process_step.bash)."
+                f"CTS sensor USD not found at {usd_path}. The asset ships "
+                "inside the package under synaptics_tactile_newton/assets/ — "
+                "reinstall the package if it is missing."
             )
         self._usd_path = usd_path
 

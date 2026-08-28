@@ -1,12 +1,21 @@
 # Changelog
 
 All notable changes to the `synaptics-tactile-newton` package are documented in
-this file. This file is scoped to the **package** (what ships in the release
-repo), not the playground/exploration work that lives alongside it here.
+this file. It is scoped to the **package** — the sensor model, the Isaac Sim
+extension, the examples and the test suite.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) (see
 `pyproject.toml` for the current version).
+
+## [0.4.0] - 2026-08-28
+
+- Add more scenarios to Isaac Sim extension: diagonal sphere, rolling cylinder, wire drop
+- Heatmap tooltips: live force readout, fixed colors
+- Add run_isaaclab_demo.sh: one-command Isaac Lab demo launcher
+- Make the Kit extension self-contained to launch
+- Pin warp-lang to the validated 1.13.0 in setup_newton.sh
+- Cleanup documentation
 
 ## [0.3.0] - 2026-08-17
 
@@ -70,6 +79,6 @@ and the project uses [Semantic Versioning](https://semver.org/) (see
 - Optional Isaac Lab wrapper (`synaptics_tactile_newton.isaaclab`) behind the
   `isaaclab` extra.
 - Baked CTS USD asset + taxel map shipped inside the package.
-- Examples: `standalone_newton.py`, `isaaclab_task.py`, `isaaclab_task_demo.py`.
+- Examples: `standalone_newton.py`, `isaaclab_task.py`.
 - Test suite covering dead-weight totals, per-taxel indentation/spatial
   response, force-area coverage, and saturation.
