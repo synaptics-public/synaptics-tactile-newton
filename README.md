@@ -32,6 +32,7 @@ synaptics_tactile_newton/        # the Newton Package
   sensor.py                      #   CTSSensor — the sensor model
   output.py                      #   CTSOutput — the per-taxel force bundle
   display.py                     #   format_forces / print_forces helpers
+  winkler.py                     #   WinklerReadout — optional readout correction
   kernels.py                     #   Warp signal-generation kernels
   isaaclab/                      #   OPTIONAL Isaac Lab wrapper (guarded import)
   assets/                        #   baked CTS USD geometry + taxel map
@@ -120,7 +121,7 @@ remote host see [Examples](#examples) for port forwarding).
 Top-level API:
 
 ```python
-from synaptics_tactile_newton import CTSSensor, CTSOutput, print_forces
+from synaptics_tactile_newton import CTSSensor, CTSOutput, print_forces, WinklerReadout
 ```
 
 - **`CTSSensor`** — attaches to a Newton `Model`, matches the sensor's force-area
@@ -131,6 +132,10 @@ from synaptics_tactile_newton import CTSSensor, CTSOutput, print_forces
   - `total_force` — net force vector `[N]` on the sensing surface, shape `(3,)`
 - **`print_forces` / `format_forces`** — pretty-print the taxel grid to the
   terminal.
+- **`WinklerReadout`** — host-side post-process that respreads the
+  engine's per-taxel split as a Winkler foundation, preserving each pressing
+  body's total. Read its
+  [limitations](#limitations--known-issues) before using it.
 
 The **baked CTS USD asset** and its **taxel map** (taxel names, centroids, press
 axis) ship inside `synaptics_tactile_newton/assets/` and travel with the wheel.
@@ -308,6 +313,30 @@ Each exits non-zero on failure, so they double as CI gates — see
   register. Keep contact inside the array (x ±14.75 mm, y ±6.45 mm on CTS0.0).
   Real hardware has a rubber pad proud of the base, so this is an asset-fidelity
   gap rather than a physical one.
+
+- **`WinklerReadout` sees pressing objects only through box, sphere, capsule and
+  cylinder collision shapes.** It derives each taxel's indentation from the
+  presser's surface, so a body carrying none of those (a mesh, a convex hull) is
+  invisible to the correction and its taxels keep the raw engine forces. Four
+  further constraints on the correction:
+
+  - **Single-world models only — the batched Isaac Lab wrapper is not handled.**
+    `WinklerReadout` reads one `Model`/`State` pair and one flat taxel array, so
+    the multi-environment path in `synaptics_tactile_newton.isaaclab` reports the
+    engine's raw split.
+  - **The default cell aperture assumes the sensor does not rotate mid-run.** The
+    in-plane sample offsets are resolved once, at the first update, from the
+    sensor's press axis. A sensor that reorients while running needs point
+    sampling (`aperture=None`).
+  - **`delta0` sets the apparent contact-patch size under a curved presser**
+    (`a ≈ sqrt(2·R·delta0)` for a sphere of radius R), standing in for the pad's
+    physical compliance. The 0.3 mm default is fine for flat faces, where it is
+    pure numerical conditioning and any value well above the geometric noise
+    gives the same profile; calibrate it if patch width matters to you.
+  - **It is a host-side post-process.** It runs in NumPy after `sensor.update`
+    and copies forces, taxel positions and body poses off the GPU each time it is
+    called, so it breaks the core sensor's GPU-only data path. Call it at your
+    readout rate rather than every solver step.
 
 - **The box-built sensor body is kinematic (perfectly rigid).** For stable
   contact the solver step must stay below roughly `sqrt(m / contact_ke)`; a body

@@ -118,8 +118,18 @@ Isaac Sim and keeps a Kit version bump from touching sensor behaviour.
   value, because a 100 N per-taxel limit against a ~0.04 N peak would render
   every cell black. Cells at the model's saturation limit are drawn in magenta
   and called out in the headline, so a clamped reading never passes for a
-  correct one. Above the grid: the sensor path, summed force, net |F| and the
-  step count — a settled 50 g object reads ~0.49 N there.
+  correct one. Above the grid: the sensor path, the readout mode, summed force,
+  net |F| and the step count — a settled 50 g object reads ~0.49 N there.
+* **The readout mode** in the headline says which spatial distribution you are
+  looking at. `Winkler` is the corrected one: rigid contact only pins the *net*
+  wrench on a body, so the engine's split of that wrench across a row of
+  coplanar pads is statically indeterminate and a flat cube reads a ragged
+  profile. The extension redistributes it as a Winkler foundation (a bed of
+  independent springs) per pressing body, leaving each body's total exactly as
+  the engine reported it. `raw` means the model offered no pressing shape the
+  correction understands (see the package README's limitations) and the engine's
+  own split is passing through untouched. The headless diagnostics print the
+  same mode next to each sensor path.
 * **`Play 1` → `Step 1` / `Step 5`** walk through a contact event a physics step
   at a time. `Play 1` starts a stopped simulation and pauses after one step, so
   you are immediately ready to Step; `Step N` then advances exactly N steps.

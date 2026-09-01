@@ -8,6 +8,10 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and the project uses [Semantic Versioning](https://semver.org/) (see
 `pyproject.toml` for the current version).
 
+## [1.0.0] - 2026-09-01
+
+- Add simple Winkler based model to provide better force data in Newton model
+
 ## [0.4.0] - 2026-08-28
 
 - Add more scenarios to Isaac Sim extension: diagonal sphere, rolling cylinder, wire drop

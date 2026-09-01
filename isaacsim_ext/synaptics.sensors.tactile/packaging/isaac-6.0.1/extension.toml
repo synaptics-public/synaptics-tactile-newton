@@ -7,7 +7,7 @@
 # touching the default.
 
 [package]
-version = "0.1.0"
+version = "1.0.0"
 title = "Synaptics Tactile Sensor (CTS)"
 description = "Capacitive Tactile Sensor (CTS) for Isaac Sim, bound to the Newton physics backend."
 authors = ["Synaptics Incorporated"]

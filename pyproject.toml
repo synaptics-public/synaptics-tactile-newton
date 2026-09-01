@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "synaptics-tactile-newton"
-version = "0.4.0"
+version = "1.0.0"
 description = "Synaptics CTS tactile sensor model for Newton physics engine"
 readme = "README.md"
 requires-python = ">=3.10"
@@ -38,4 +38,5 @@ testpaths = ["tests"]
 addopts = ["-v"]
 markers = [
     "sim: slow Newton simulation test (needs newton + the CTS sensor USD)",
+    "unit: fast Winkler algorithm test (needs newton; no solver, no USD)",
 ]

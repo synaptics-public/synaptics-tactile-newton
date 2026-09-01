@@ -19,6 +19,7 @@ synaptics_tactile_newton/        # the deliverable package
   sensor.py                      #   CTSSensor — the sensor model
   output.py                      #   CTSOutput — the per-taxel force bundle
   display.py                     #   format_forces / print_forces helpers
+  winkler.py                     #   WinklerReadout — optional readout correction
   kernels.py                     #   Warp signal-generation kernels
   isaaclab/                      #   OPTIONAL Isaac Lab wrapper (guarded import)
   assets/                        #   baked CTS USD geometry + taxel map
@@ -30,7 +31,7 @@ docs/                            # this document
 Top-level API:
 
 ```python
-from synaptics_tactile_newton import CTSSensor, CTSOutput, print_forces
+from synaptics_tactile_newton import CTSSensor, CTSOutput, print_forces, WinklerReadout
 ```
 
 - **`CTSSensor`** — attaches to a Newton `Model`, matches the sensor's force-area
@@ -41,6 +42,9 @@ from synaptics_tactile_newton import CTSSensor, CTSOutput, print_forces
   - `total_force` — net force vector `[N]` on the sensing surface, shape `(3,)`
 - **`print_forces` / `format_forces`** — pretty-print the taxel grid to the
   terminal.
+- **`WinklerReadout`** — host-side post-process that respreads the
+  engine's per-taxel split as a Winkler foundation, preserving each pressing
+  body's total. See the README's limitations before using it.
 
 The **baked CTS USD asset** and its **taxel map** (taxel names, centroids, press
 axis) ship inside `synaptics_tactile_newton/assets/` and travel with the wheel.

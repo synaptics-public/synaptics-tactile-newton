@@ -306,8 +306,10 @@ class TactileSensorWindow:
             fixed_scale=self._scene_force_scale(),
         )
         others = len(sensors) - 1
+        mode = "Winkler" if sensor.get("winkler") else "raw"
         self._set_headline(
-            f"{sensor['prim_path']}   |   Σ {float(forces.sum()):.4f} N over "
+            f"{sensor['prim_path']}   |   {mode} readout   |   "
+            f"Σ {float(forces.sum()):.4f} N over "
             f"{sensor['num_taxels']} taxels   |   net |F| "
             f"{sensor.get('total_force', 0.0):.4f} N   |   step {readout.get('steps', 0)}"
             + ("   |   SATURATED" if stats["saturated"] else "")

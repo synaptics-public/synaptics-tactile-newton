@@ -51,10 +51,15 @@ def get_active_runtime():
 class SensorBinding:
     """One spawned sensor prim, bound to the live Newton model."""
 
-    def __init__(self, prim_path: str, sensor, config: dict):
+    def __init__(self, prim_path: str, sensor, config: dict, winkler=None):
         self.prim_path = prim_path
         self.sensor = sensor
         self.config = config
+        #: Winkler readout correction (``synaptics_tactile_newton.WinklerReadout``).
+        #: Configuration-free: it reads pressing-body geometry off the model, so
+        #: it is armed whenever the model offers a supported pressing shape.
+        #: None = raw engine readout.
+        self.winkler = winkler
         self.latest_forces = None       # (num_taxels,) host copy, newtons
         self.latest_total_force = 0.0   # magnitude of the net force vector [N]
 
@@ -229,6 +234,8 @@ class TactileRuntime:
 
         for binding in self._bindings:
             binding.sensor.update(state, contacts)
+            if binding.winkler is not None:
+                binding.winkler.update(state)
         self._steps += 1
 
     # ------------------------------------------------------------------ #
@@ -252,7 +259,7 @@ class TactileRuntime:
             return False
 
         try:
-            from synaptics_tactile_newton import CTSSensor
+            from synaptics_tactile_newton import CTSSensor, WinklerReadout
         except ImportError as error:
             self._last_error = (
                 f"synaptics_tactile_newton is not importable inside Kit ({error}). "
@@ -303,9 +310,20 @@ class TactileRuntime:
                 self._last_error = f"{prim_path}: {error}"
                 continue
 
-            bound.append(SensorBinding(prim_path, sensor, dict(config)))
+            # Winkler readout correction: replaces the engine's statically
+            # indeterminate per-taxel split with the well-posed Winkler-bed
+            # distribution (per pressing body, totals preserved). It reads the
+            # pressing bodies' geometry off the model itself; when the model
+            # offers no supported pressing shape it stays off and the raw
+            # engine readout passes through.
+            winkler = WinklerReadout(sensor, model)
+            if not winkler.active:
+                winkler = None
+
+            bound.append(SensorBinding(prim_path, sensor, dict(config), winkler))
             carb.log_info(
-                f"{_LOG_PREFIX} bound {prim_path}: {sensor.num_taxels} taxels"
+                f"{_LOG_PREFIX} bound {prim_path}: {sensor.num_taxels} taxels, "
+                f"winkler readout {'on' if winkler else 'off (no supported presser)'}"
             )
 
         self._bindings = bound
@@ -408,6 +426,7 @@ class TactileRuntime:
                     "names": sensor.taxel_names,
                     "num_taxels": binding.num_taxels,
                     "force_max": float(binding.config.get("forceMaxN", DEFAULT_FORCE_MAX_N)),
+                    "winkler": binding.winkler is not None,
                 }
             )
         return {
@@ -429,8 +448,9 @@ class TactileRuntime:
             if forces is None:
                 continue
             active = int((forces > 1e-4).sum())
+            mode = "winkler" if binding.winkler is not None else "raw engine"
             lines.append(
-                f"{binding.prim_path}\n"
+                f"{binding.prim_path}  [{mode} readout]\n"
                 f"  total |F| : {binding.latest_total_force:8.4f} N\n"
                 f"  Sum taxels: {float(forces.sum()):8.4f} N over {binding.num_taxels} taxels\n"
                 f"  peak taxel: {float(forces.max()):8.4f} N   active: {active}"

@@ -383,6 +383,47 @@ class SensorRig:
         self._free_bodies.append(body)
         return body
 
+    def add_cylinder(
+        self,
+        mass: float,
+        radius: float,
+        half_height: float,
+        xy: tuple = (0.0, 0.0),
+        start_z: Optional[float] = None,
+        height: float = 0.03,
+        mu: float = 1.0,
+        label: str = "cylinder",
+    ) -> int:
+        """Add a free dynamic cylinder lying on its side, axis along world X.
+
+        Newton's cylinder axis runs along the shape's local Z, so the body is
+        rotated +90 deg about Y to lay it down — a resting "wire" pressing a
+        line of taxels. ``start_z`` sets the centre's absolute world Z [m]
+        (default ``SENSOR_Z + height``).
+        """
+        z0 = start_z if start_z is not None else SENSOR_Z + height
+        half = math.pi / 4.0  # half of +90 deg
+        body = self.builder.add_body(
+            xform=wp.transform(
+                (xy[0], xy[1], z0),
+                wp.quat(0.0, math.sin(half), 0.0, math.cos(half)),
+            ),
+            label=label,
+        )
+        cfg = newton.ModelBuilder.ShapeConfig()
+        cfg.density = float(mass) / (math.pi * radius**2 * 2.0 * half_height)
+        cfg.mu = float(mu)
+        self.builder.add_shape_cylinder(
+            body=body,
+            radius=radius,
+            half_height=half_height,
+            cfg=cfg,
+            color=(0.9, 0.6, 0.1),
+            label=f"{label}_shape",
+        )
+        self._free_bodies.append(body)
+        return body
+
     # --- finalize ---------------------------------------------------------- #
     def finalize(self, build_solver: bool = True) -> "SensorRig":
         """Build the model, sensor and contacts.

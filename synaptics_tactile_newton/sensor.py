@@ -240,6 +240,24 @@ class CTSSensor:
         return self._num_taxels
 
     @property
+    def force_max(self) -> float:
+        """Per-taxel saturation force [N]."""
+        return self._force_max
+
+    @property
+    def sensing_axis(self):
+        """The shared unit press axis as a host (3,) array.
+
+        Body-local; for a world-static sensor (all taxel shapes ``body == -1``,
+        any mount rotation baked in at construction) this is the world-frame
+        sensor normal.
+        """
+        return np.array(
+            [self._sensing_axis[0], self._sensing_axis[1], self._sensing_axis[2]],
+            dtype=np.float64,
+        )
+
+    @property
     def taxel_bodies(self):
         """Per-taxel body index (host ``int32``); ``-1`` for static/world shapes."""
         return self._taxel_bodies_np
