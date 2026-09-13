@@ -4,6 +4,19 @@ All notable changes to the Synaptics tactile sensor Isaac Sim extension.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
+## [1.0.1] - 2026-09-13
+
+### Fixed
+
+- A stage without a sensor is scanned once per Play, not on every physics
+  step; a solver refusal is logged once.
+
+### Changed
+
+- Validated on Isaac Sim 6.1.0 (Newton 1.5.0) alongside 6.0.1; the demo-scene
+  harness now judges the sphere by row pitch and the wire by carrying most of
+  its weight.
+
 ## [1.0.0] - 2026-09-01
 
 First release: spawn a CTS sensor in Isaac Sim, press it, and read per-taxel

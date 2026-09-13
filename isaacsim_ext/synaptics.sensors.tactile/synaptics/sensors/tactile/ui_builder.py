@@ -191,7 +191,7 @@ class TactileSensorWindow:
                         "Warm up kernels",
                         clicked_fn=self._warm_up_clicked,
                         tooltip="Compile Warp's MuJoCo contact kernels now, instead "
-                                "of stalling ~30 s on your first Play.",
+                                "of stalling your first Play (up to a few mins).",
                     )
                 with ui.HStack(height=26, spacing=6):
                     ui.Button(

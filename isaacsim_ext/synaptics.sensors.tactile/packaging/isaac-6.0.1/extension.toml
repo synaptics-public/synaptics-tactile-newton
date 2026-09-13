@@ -1,13 +1,11 @@
 # Dependency manifest for Isaac Sim 6.0.1 (the reference target).
 #
 # Copy over ../../config/extension.toml when installing against this Isaac Sim
-# version. Today it is identical to the default manifest — it exists so that the
-# next supported Isaac Sim version (6.1, which changes the
-# PXR_WORK_THREAD_LIMIT behaviour, see docs/README.md) can diverge without
-# touching the default.
+# version. Today it is identical to the default manifest — it exists so that a
+# later Isaac Sim version can diverge without touching the default.
 
 [package]
-version = "1.0.0"
+version = "1.0.1"
 title = "Synaptics Tactile Sensor (CTS)"
 description = "Capacitive Tactile Sensor (CTS) for Isaac Sim, bound to the Newton physics backend."
 authors = ["Synaptics Incorporated"]

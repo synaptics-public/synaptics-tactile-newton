@@ -141,7 +141,7 @@ def resolve_model_assets(config: dict) -> tuple[Path, Path]:
         raise FileNotFoundError(
             "Could not locate the Synaptics tactile assets. Install the core "
             "package into Isaac Sim's python "
-            "(./python.sh -m pip install synaptics-tactile-newton) or set "
+            "(./python.sh -m pip install --no-deps /path/to/synaptics-tactile-newton) or set "
             f"{ASSET_DIR_ENV_VAR} to a directory holding the baked assets."
         )
 

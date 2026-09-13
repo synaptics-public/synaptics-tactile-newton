@@ -13,11 +13,11 @@ Isaac Sim and keeps a Kit version bump from touching sensor behaviour.
 
 | | Supported |
 |---|---|
-| Isaac Sim | **6.0.1** (validated). 6.0 is the floor — `isaacsim.physics.newton` does not exist in 5.x, which is PhysX-only. |
-| Physics backend | Newton (`isaacsim.physics.newton` 0.8.x) |
+| Isaac Sim | **6.0.1** and **6.1.0** (validated). 6.0 is the floor — `isaacsim.physics.newton` does not exist in 5.x, which is PhysX-only. |
+| Physics backend | Newton (`isaacsim.physics.newton` 0.8.x on 6.0.1, 1.0.x on 6.1.0) |
 | Solver | **MuJoCo, GPU.** Isaac Sim only calls `solver.update_contacts()` on that path, so XPBD and MuJoCo-on-CPU produce no contact forces. The extension refuses to arm on those rather than reporting zeros. |
 | Sensor mount | **Static / fixture** (bench-mounted sensor, indenter presses it). A robot-link-mounted sensor is not supported yet — see [Known limitations](#known-limitations). |
-| Newton | 1.2.x (1.2.1 ships with Isaac Sim 6.0.1) |
+| Newton | Whichever the build bundles: 1.2.1 (Isaac Sim 6.0.1), 1.5.0 (Isaac Sim 6.1.0) |
 
 ## Install
 
@@ -33,11 +33,13 @@ Isaac Sim and keeps a Kit version bump from touching sensor behaviour.
    python path itself, so the core `synaptics_tactile_newton` package — the
    sensor model and the baked assets — resolves with no further setup. Only if
    the extension folder lives away from the repo, install the core package
-   into Isaac Sim's python instead:
+   into Isaac Sim's python instead — with `--no-deps`, because Kit already
+   bundles Newton, Warp and NumPy and the package's own pins must not touch
+   them:
 
    ```bash
    cd <isaac-sim-root>
-   ./python.sh -m pip install /path/to/synaptics-tactile-newton
+   ./python.sh -m pip install --no-deps /path/to/synaptics-tactile-newton
    ```
 
    **`PYTHONPATH` has no effect** — Kit's embedded Python ignores it.
@@ -74,7 +76,7 @@ Isaac Sim and keeps a Kit version bump from touching sensor behaviour.
   | `Two larger cubes, staggered` | The same shot with 100 g / 8 mm cubes, for a heavier reading. |
   | `Rolling sphere (diagonal)` | A 50 g / 8 mm sphere rolls down a ramp set 18° off the long axis, so its patch crosses the array corner to corner — moving in **both** u and v rather than straight down the middle row. |
   | `Rolling cylinder` | A 50 g / 8 mm × 12 mm cylinder rolls the length of the array, its axis square to its travel. Presses a **line** across the full width instead of a point: the shot that shows the sensor resolving what orientation something has, not just where it is. |
-  | `Wire drop (awkward angle)` | A 2 mm × 20 mm rigid wire dropped tilted, its axis 18° off the long axis. One end strikes first, then the rest slaps down — a point that grows into a diagonal line, settling at *m·g*. |
+  | `Wire drop (awkward angle)` | A 2 mm × 20 mm rigid wire dropped tilted, its axis 18° off the long axis. One end strikes first, then the rest slaps down — a point that grows into a diagonal line carrying most of the wire's weight (an end that comes to rest past the array edge sits on the coplanar base, which takes the remainder). |
 
   The measurement scene is no longer in the dropdown: one 50 g cube sitting
   still makes a poor demo, but it is the only scene whose reading is verifiable
@@ -143,7 +145,7 @@ Isaac Sim and keeps a Kit version bump from touching sensor behaviour.
   rate to make a frame equal the requested number of steps. That also leaves
   playback in slow motion, which is usually what you want while stepping.
 * **`Warm up kernels`** compiles Warp's MuJoCo contact kernels on demand,
-  instead of stalling your first Play for ~30 s.
+  instead of stalling your first Play (~30 s on Isaac Sim 6.0.1, minutes on 6.1.0).
 
 **Stopping the timeline is what resets the scene.** Newton publishes simulated
 poses to Fabric and never writes them back to the prim's transform, so rewriting
@@ -151,8 +153,11 @@ that transform mid-play changes nothing — the model has to be rebuilt from USD
 which is exactly what Stop → Play does.
 
 The sensor binds on the **first physics step after Play** (Newton builds its
-model lazily), and unbinds on Stop. Expect a ~30 s pause on the very first Play
-of a session while Warp compiles the MuJoCo narrow-phase kernels.
+model lazily), and unbinds on Stop. Expect a pause on the very first Play of a
+session while Warp compiles the MuJoCo narrow-phase kernels: ~30 s on Isaac Sim
+6.0.1, several minutes on 6.1.0 (its newer Newton, Warp and mujoco-warp stack
+has more to compile). The compiled
+kernels are cached across sessions.
 
 `Add sensor only` places a bare sensor instead. Three things it leaves to you,
 all of which `Load Scenario` handles:
@@ -225,12 +230,13 @@ so Isaac Sim, Isaac Lab and the standalone examples all read the same bytes.
 ## Known limitations
 
 **Statically mounted sensors only.** Under OpenUSD < 26.5 — which Isaac Sim
-6.0.1 bundles (25.11) — the parallel physics parse
+6.0.1 and 6.1.0 both bundle (25.11) — the parallel physics parse
 (`UsdPhysics.LoadUsdPhysicsFromRange`) corrupts the heap when one rigid body
 owns many colliders. The CTS module has 52. Static colliders are unaffected at
 any count, and the shipped asset carries `PhysicsCollisionAPI` without
 `RigidBodyAPI`, so fixture-style scenes work today. Mounting the sensor on a
-robot link needs OpenUSD ≥ 26.5, which arrives with Newton 1.5.0.
+robot link needs OpenUSD ≥ 26.5, which no Isaac Sim build bundles yet (6.1.0
+pairs Newton 1.5.0 with OpenUSD 25.11).
 
 **MuJoCo GPU solver only.** See the support matrix. XPBD implements
 `update_contacts()` but Isaac Sim never calls it.

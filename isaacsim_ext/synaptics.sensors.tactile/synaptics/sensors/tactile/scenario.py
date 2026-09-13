@@ -582,7 +582,7 @@ SCENES = {
         description=(
             "A 2 mm thick, 20 mm rigid wire dropped tilted, its axis 18 deg "
             "off the long axis. One end strikes first and the rest slaps "
-            "down: a point that grows into a diagonal line, then settles at "
+            "down: a point that grows into a diagonal line carrying most of "
             "the wire's weight."
         ),
         indenters=(

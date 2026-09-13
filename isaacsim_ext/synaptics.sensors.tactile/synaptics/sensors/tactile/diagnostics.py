@@ -26,7 +26,7 @@ from pathlib import Path
 from .adapters import get_newton_adapter
 
 #: Isaac Sim builds this extension has been exercised against.
-VALIDATED_ISAAC_BUILDS = ("6.0.1",)
+VALIDATED_ISAAC_BUILDS = ("6.0.1", "6.1.0")
 
 #: The Newton physics backend first ships in Isaac Sim 6.0; 5.x is PhysX-only.
 MINIMUM_ISAAC_VERSION = (6, 0)
@@ -351,7 +351,7 @@ def format_diagnostics(report: dict, verbose: bool = False) -> str:
                 lines.append(
                     "  All sensor math lives in this package. Install it into "
                     "Isaac Sim's python: "
-                    "./python.sh -m pip install synaptics-tactile-newton"
+                    "./python.sh -m pip install --no-deps /path/to/synaptics-tactile-newton"
                 )
 
     usd = packages["usd"]
@@ -364,8 +364,8 @@ def format_diagnostics(report: dict, verbose: bool = False) -> str:
             lines.append(
                 "  OpenUSD < 26.5: parallel physics parsing corrupts the heap when "
                 "one rigid body owns many colliders. Statically mounted sensors "
-                "are unaffected; a robot-mounted CTS is not supported on this "
-                "build (needs Newton 1.5.0)."
+                "are unaffected; a robot-mounted CTS needs an Isaac Sim build "
+                "that bundles OpenUSD 26.5 or newer."
             )
     else:
         lines.append(f"[FAIL] OpenUSD: {usd['error']}")

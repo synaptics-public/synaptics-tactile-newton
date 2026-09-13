@@ -24,7 +24,7 @@ Design rules for anything added here:
 - **No sensor math.** It belongs in `synaptics_tactile_newton`, where
   `pytest tests/` can exercise it. An extension is a shell over that package.
 - **Everything version-specific goes behind `adapters/`.**
-  `isaacsim.physics.newton` is pre-1.0 and its contact handling already changed
-  between Isaac Sim 6.0.0-rc.22 and 6.0.1.
+  `isaacsim.physics.newton`'s contact handling already changed between Isaac
+  Sim 6.0.0-rc.22 and 6.0.1, and it went from 0.8 to 1.0 with Isaac Sim 6.1.0.
 - **No repo-local helper files.** Everything here must work from a plain
   checkout — no paths outside `isaacsim_ext/` and `synaptics_tactile_newton/`.

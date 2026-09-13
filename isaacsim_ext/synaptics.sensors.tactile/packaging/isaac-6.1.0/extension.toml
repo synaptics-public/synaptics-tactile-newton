@@ -1,3 +1,9 @@
+# Dependency manifest for Isaac Sim 6.1.0.
+#
+# Copy over ../../config/extension.toml when installing against this Isaac Sim
+# version. Identical to the default manifest: 6.1.0 still bundles OpenUSD 25.11
+# (see docs/README.md, Known limitations), so nothing diverges.
+
 [package]
 version = "1.0.1"
 title = "Synaptics Tactile Sensor (CTS)"

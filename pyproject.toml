@@ -4,12 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "synaptics-tactile-newton"
-version = "1.0.0"
+version = "1.0.1"
 description = "Synaptics CTS tactile sensor model for Newton physics engine"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
-    "warp-lang",
+    # ``sim`` brings the MuJoCo-Warp solver, ``importers`` the USD reader that
+    # loads the bundled sensor asset.
+    "newton[sim,importers]>=1.2",
+    "warp-lang>=1.13",
     "numpy",
 ]
 

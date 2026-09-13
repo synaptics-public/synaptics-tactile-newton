@@ -208,19 +208,18 @@ class TactileRuntime:
             return
 
         # Newton rebuilds its model whenever the stage changes, not only on
-        # Play, and the old Model/Contacts are destroyed with it. Binding once
-        # per Play would leave us holding a sensor built against freed buffers —
-        # still reporting numbers, silently stale. Rebind when the model
-        # identity changes.
+        # Play, and the old Model/Contacts are destroyed with it. Bindings and
+        # the bind attempt both belong to one model: a sensor built against a
+        # freed one keeps reporting numbers, silently stale.
         model = adapter.model()
-        if self._bindings and model is not self._bound_model:
-            carb.log_info(f"{_LOG_PREFIX} Newton model changed; rebinding sensors.")
+        if model is not self._bound_model:
+            if self._bindings:
+                carb.log_info(f"{_LOG_PREFIX} Newton model changed; rebinding sensors.")
             self._unbind()
 
         if not self._bindings and not self._bind_attempted:
             # False means "try again next step": the solver is often not
-            # populated on the very first one, and latching then would leave the
-            # sensor dead for the whole Play session.
+            # populated on the very first one.
             self._bind_attempted = self._bind()
 
         if not self._bindings:
@@ -245,13 +244,16 @@ class TactileRuntime:
     def _bind(self) -> bool:
         """Build one ``CTSSensor`` per tagged prim against the live model.
 
-        Returns False when the failure is transient and worth retrying.
+        Returns False when the failure is transient and worth retrying next
+        step, True once the stage's sensor prims have been matched against
+        this model, bound or not.
         """
         adapter = self._adapter
         ok, reason = adapter.contact_forces_available()
         if not ok:
-            self._last_error = reason
-            carb.log_error(f"{_LOG_PREFIX} refusing to arm: {reason}")
+            if reason != self._last_error:
+                self._last_error = reason
+                carb.log_error(f"{_LOG_PREFIX} refusing to arm: {reason}")
             return False
 
         stage = omni.usd.get_context().get_stage()
@@ -261,19 +263,22 @@ class TactileRuntime:
         try:
             from synaptics_tactile_newton import CTSSensor, WinklerReadout
         except ImportError as error:
-            self._last_error = (
+            message = (
                 f"synaptics_tactile_newton is not importable inside Kit ({error}). "
                 "Load the extension from a full repo checkout (the package sits "
                 "beside isaacsim_ext/), or install it into Isaac Sim's python."
             )
-            carb.log_error(f"{_LOG_PREFIX} {self._last_error}")
+            if message != self._last_error:
+                self._last_error = message
+                carb.log_error(f"{_LOG_PREFIX} {message}")
             return False
 
         model = adapter.model()
+        self._bound_model = model
         prims = find_sensor_prims(stage)
         if not prims:
             self._last_error = "No Synaptics sensor prims on this stage."
-            return False
+            return True
 
         bound = []
         for prim in prims:
@@ -328,7 +333,6 @@ class TactileRuntime:
 
         self._bindings = bound
         if bound:
-            self._bound_model = model
             self._last_error = ""
         elif not self._last_error:
             self._last_error = (

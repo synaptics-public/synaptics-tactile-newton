@@ -19,7 +19,7 @@ def get_newton_adapter(preferred_version: str | None = None):
 
     Raises:
         ImportError: when no supported Newton backend is importable — which on a
-            correctly installed Isaac Sim 6.0.1 means the extension was loaded
+            correctly installed Isaac Sim 6.x means the extension was loaded
             without its ``isaacsim.physics.newton`` dependency.
     """
     requested = (preferred_version or os.environ.get(ISAAC_VERSION_ENV_VAR, "")).strip()

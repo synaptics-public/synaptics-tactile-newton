@@ -209,7 +209,7 @@ class SynapticsTactileSensorExtension(omni.ext.IExt):
             f"Loaded {model_name} / {info['scene_label']}: {info['num_taxels']} taxels, "
             f"{count} indenter{'' if count == 1 else 's'} totalling "
             f"{info['indenter_mass_kg'] * 1000:.0f} g "
-            f"(settles at ~{info['expected_total_force_n']:.3f} N). Press Play."
+            f"(weight ~{info['expected_total_force_n']:.3f} N). Press Play."
         ]
         slow_motion = DEFAULT_TIME_CODES_PER_SECOND / info["time_codes_per_second"]
         if slow_motion < 1.0:
@@ -224,8 +224,9 @@ class SynapticsTactileSensorExtension(omni.ext.IExt):
                 "so the coplanar base will carry most of the load."
             )
         lines.append(
-            "First Play of a session pauses ~30 s while Warp compiles the MuJoCo "
-            "contact kernels — it is not hung, and the compile is cached after that."
+            "First Play of a session pauses while Warp compiles the MuJoCo contact "
+            "kernels (~30 s on Isaac Sim 6.0.1, several minutes on 6.1.0) — it is "
+            "not hung, and the compile is cached after that."
         )
         message = "\n".join(lines)
         carb.log_info(f"{_LOG_PREFIX} {message}")

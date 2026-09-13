@@ -10,9 +10,9 @@ contract. The rest of the extension consumes only:
 * :meth:`NewtonBackendAdapter.subscribe_physics_step`
 * :meth:`NewtonBackendAdapter.contact_forces_available`
 
-``isaacsim.physics.newton`` is pre-1.0 (0.6.0 in Isaac Sim 6.0.0-rc.22, 0.8.1 in
-6.0.1) and its contact handling already changed once between those two builds.
-This file is where that churn is absorbed.
+``isaacsim.physics.newton`` moves quickly (0.6.0 in Isaac Sim 6.0.0-rc.22,
+0.8.1 in 6.0.1, 1.0.6 in 6.1.0) and its contact handling already changed once
+between the first two. This file is where that churn is absorbed.
 """
 
 from importlib import import_module

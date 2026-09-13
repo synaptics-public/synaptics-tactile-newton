@@ -60,7 +60,7 @@ scene, and a live per-taxel heatmap. Every force value comes from `CTSSensor`
 (see [The Python package](#the-python-package)), so the extension can never
 drift from the model the tests cover.
 
-Requires Isaac Sim **6.0.1** started on its **Newton** experience
+Requires Isaac Sim **6.0.1** or **6.1.0** started on its **Newton** experience
 (`./isaac-sim.newton.sh`); the default app disables the Newton backend and runs
 PhysX.
 
@@ -82,7 +82,8 @@ start.
 Then `Window → Synaptics Tactile Sensor` → **Load Scenario** → **Play**.
 
 (Only if you relocate the extension away from the repo does the package need
-installing into Isaac Sim's python: `<isaac-sim>/python.sh -m pip install .`.
+installing into Isaac Sim's python: `<isaac-sim>/python.sh -m pip install --no-deps .`
+(Kit already bundles Newton, Warp and NumPy).
 `PYTHONPATH` has **no effect** — Kit's embedded Python ignores it.)
 
 Full documentation, including the diagnostics and the headless test harnesses,
@@ -180,9 +181,9 @@ core extensions:
 
 Already maintain an Isaac Lab environment of your own (`./isaaclab.sh -i`)?
 Installing this package into it works too — the sensor itself needs only
-`warp-lang` and `numpy`, which any Isaac Lab install already has. The example
-still runs from this repo checkout either way (it reads the sensor assets
-relative to its own location):
+`newton`, `warp-lang` and `numpy`, which any Isaac Lab 3.0 install already has.
+The example still runs from this repo checkout either way (it reads the sensor
+assets relative to its own location):
 
 ```bash
 pip install -e "/path/to/synaptics-tactile-newton[viewer]"
@@ -293,8 +294,10 @@ Each exits non-zero on failure, so they double as CI gates — see
   sensor does (one body, ~50 force areas). Isaac Lab's per-environment cloner
   re-parses that body and reliably hits the race. The documented single-thread
   workaround (`PXR_WORK_THREAD_LIMIT=1`) **cannot be applied inside Isaac Sim/Kit**
-  because a core Kit extension forces `PXR_WORK_THREAD_LIMIT=16` before USD
-  initializes — see
+  because on Isaac Sim 6.0.1 a core Kit extension forces
+  `PXR_WORK_THREAD_LIMIT=16` before USD initializes (6.1.0 only defaults it to 16
+  and honours the environment, but whether `1` avoids the race there is
+  untested) — see
   [isaac-sim/IsaacSim#692](https://github.com/isaac-sim/IsaacSim/issues/692). The
   example therefore reads the force-area geometry with `UsdGeom` bounds only and
   replays it as boxes on a Newton body, so no sensor physics schema is ever
@@ -305,7 +308,7 @@ Each exits non-zero on failure, so they double as CI gates — see
   OpenUSD reason as above: static colliders are unaffected by that race at any
   count, so a bench-mounted sensor pressed by a moving indenter works today
   while a robot-link-mounted one does not. That needs OpenUSD ≥ 26.5, which
-  arrives with Newton 1.5.0.
+  no Isaac Sim build bundles yet (6.1.0 pairs Newton 1.5.0 with OpenUSD 25.11).
 
 - **Presses wider than the taxel array under-read.** In the shipped asset the
   module base is coplanar with the force areas and extends further out, so a
@@ -360,8 +363,8 @@ This release was validated on the following stack:
 | Warp (`warp-lang`) | 1.13.0 |
 | `usd-core` | 25.11 |
 | Isaac Sim (Isaac Lab example) | 6.0.1 |
-| Isaac Sim (Kit extension) | **6.0.1**, Newton experience |
-| `isaacsim.physics.newton` (Kit extension) | 0.8.x |
+| Isaac Sim (Kit extension) | **6.0.1** and **6.1.0**, Newton experience |
+| `isaacsim.physics.newton` (Kit extension) | 0.8.x (6.0.1), 1.0.x (6.1.0) |
 | Isaac Lab (for the Isaac Lab example) | 3.0.0-beta2 |
 | GPU | NVIDIA RTX (CUDA) |
 
